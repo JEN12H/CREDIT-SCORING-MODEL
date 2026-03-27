@@ -4,53 +4,146 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.95%2B-green)
 ![MLflow](https://img.shields.io/badge/MLflow-Tracking-orange)
 ![Scikit-Learn](https://img.shields.io/badge/sklearn-1.2%2B-yellow)
+![Docker](https://img.shields.io/badge/Docker-Ready-blue)
+![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-darkgreen)
+![Tests](https://img.shields.io/badge/Tests-80%2B%20passing-brightgreen)
+
+---
+
+## ⚡ Quickstart (Zero to Working API in 4 Steps)
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Generate synthetic data (customers + 12 months of behavior)
+python scripts/generate_all_data.py
+
+# 3. Train both models (cold start + full behavioral)
+python -m src.training.train
+
+# 4. Start the API
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+> Open **http://127.0.0.1:8000/docs** to test all endpoints interactively via Swagger UI.
+
+Or use **Make** for convenience:
+```bash
+make install    # Install dependencies
+make pipeline   # data → train → eval (full pipeline)
+make serve      # Start the API server
+make test       # Run all unit tests
+make docker     # Build & run with Docker
+```
+
+---
 
 ## 📖 Project Overview
+
 This project is a real-time **Risk Assessment Engine** designed for **Buy Now Pay Later (BNPL)** applications.
 
 The biggest challenge in BNPL is the **Cold Start Problem**: new users want to buy *instantly* at checkout, but platforms have zero transaction history for them. Traditional banks reject these users, leading to lost sales.
 
 **Our Solution**: A **Dual-Model Architecture** that enables **Instant Approvals** for new shoppers while protecting the platform from fraud and default risk.
 
+### Production-Grade Features
+- 🔒 **Security**: CORS lockdown, rate limiting (`slowapi`), API key authentication
+- 📊 **Monitoring**: Model drift detection, AUC threshold alerting, Prometheus-compatible `/metrics`
+- 🔄 **Auto-Retraining**: APScheduler runs monthly retraining on the 1st of every month
+- 📁 **Model Versioning**: Timestamped model saves with rollback via API
+- 🐳 **Docker**: One-command deployment with `docker-compose`
+- 🧪 **Test Suite**: 80+ unit tests covering handler, API, database, and versioning
+- 🗄️ **Supabase**: Cloud-hosted PostgreSQL for customer data and retraining logs
+
 ---
 
 ## 🚀 Key Features
+
 1.  **Instant Checkout Decisions**:
-    *   **Cold Start Model**: Instantly scores new users (0-3 months) using *only* checkout & demographic data (Age, Income, Education) to assign a safe initial spending limit.
+    *   **Cold Start Model**: Instantly scores new users (0–3 months) using *only* checkout & demographic data (Age, Income, Education) to assign a safe initial spending limit.
     *   **Full Model**: Unlocks higher spending limits for repeat users (6+ months) based on repayment behavior (Payment Ratios, BNPL usage).
-2.  **Safety Guardrails**: 
+
+2.  **Safety Guardrails**:
     *   **Tiered Spending Caps**: New users are capped at lower amounts (e.g., ₹5,000) until they prove reliability.
     *   **Risk Rules**: Automatically flags high-risk profiles (e.g., very young borrowers with low income) to prevent default.
+
 3.  **End-to-End MLOps & Data Pipeline**:
-    *   **Automated Data Pipeline**: One-click extraction and feature engineering from raw CSVs. 
-    *   **Watch Mode**: Automatically recalculates credit scores as soon as you save data in Excel or CSV.
-    *   **MLflow** for tracking experiment accuracy.
+    *   **Automated Data Pipeline**: One-click extraction and feature engineering from raw CSVs.
+    *   **MLflow** for tracking experiment accuracy across training runs.
     *   **GitHub Actions** for automated testing (CI/CD).
     *   **FastAPI** for sub-second inference at checkout.
+
+4.  **Production Security & Monitoring**:
+    *   **Rate Limiting**: Prevents API abuse with configurable request limits.
+    *   **API Key Auth**: Admin endpoints (retraining, rollback) require `X-API-Key` header.
+    *   **Model Drift Detection**: Tracks prediction distribution changes in real-time.
+    *   **AUC Alerting**: Warns when model performance drops below configurable threshold.
 
 ---
 
 ## 🛠️ Project Architecture
 
 ```
-├── .github/workflows/    # CI/CD Pipeline (Automated Testing)
-├── data/                 # Raw CSVs (customers, behavior) & Calculated Snapshots
-├── models/               # Trained models (.pkl) & Feature Config
-├── src/                  # Source Code
-│   ├── analysis/         # Cold Start Research & Audits
-│   ├── data_generation/  # Synthetic Data Engine
-│   ├── app.py            # FastAPI Production Server
-│   ├── pipeline.py       # DATA PIPELINE ORCHESTRATOR (Watch Mode)
-│   ├── cold_start_handler.py # COLD START LOGIC & GUARDRAILS
-│   ├── train_model.py    # Training Pipeline (with auto-sync)
-│   └── test_model.py     # Evaluation Suite
-├── params.yaml           # Centralized Hyperparameter Config
-└── requirements.txt      # Project Dependencies
+├── .github/workflows/         # CI/CD Pipeline (GitHub Actions)
+│   └── ml_ci_cd.yml           #   pytest → data generation → training → evaluation
+├── data/                      # Raw CSVs & calculated snapshots
+│   ├── customers.csv          #   Static customer profiles
+│   ├── credit_behavior_monthly.csv  # Monthly behavioral records
+│   └── model_snapshots.csv    #   Feature-engineered training data
+├── models/                    # Trained models & versioning
+│   ├── cold_start_model.pkl   #   Latest cold start model
+│   ├── credit_score_model.pkl #   Latest full behavioral model
+│   ├── feature_config.pkl     #   Feature lists for each model
+│   ├── model_manifest.json    #   Version history & AUC tracking
+│   └── *_YYYYMMDD_HHMMSS.pkl #   Timestamped model backups
+├── scripts/                   # CLI utilities
+│   ├── generate_all_data.py   #   One-click data pipeline
+│   └── seed_db.py             #   Supabase seeder
+├── src/                       # Source code
+│   ├── api/                   # FastAPI Application
+│   │   ├── app.py             #   App init, CORS, rate limiting, metrics
+│   │   ├── schemas.py         #   Pydantic request/response models
+│   │   └── routes/            #   Endpoint modules
+│   │       ├── scoring.py     #     /api/v1/predict/* endpoints
+│   │       ├── data.py        #     /api/v1/customers/* endpoints
+│   │       └── admin.py       #     /api/v1/admin/* endpoints (auth required)
+│   ├── core/                  # Business Logic
+│   │   ├── handler.py         #   ColdStartHandler — 3-tier model routing
+│   │   ├── versioning.py      #   Model versioning, manifest, rollback
+│   │   └── monitoring.py      #   Prediction drift detection & AUC alerting
+│   ├── data/                  # Data Generation & Feature Engineering
+│   │   ├── generate_customers.py
+│   │   ├── generate_behavior.py
+│   │   └── feature_pipeline.py  # Snap pipeline (rolling features)
+│   ├── training/              # ML Training & Evaluation
+│   │   ├── train.py           #   Dual-model training pipeline
+│   │   └── evaluate.py        #   Model evaluation suite
+│   ├── db/                    # Database Layer
+│   │   └── supabase.py        #   Supabase CRUD, export, retraining log
+│   └── scheduler/             # Background Jobs
+│       └── retraining.py      #   APScheduler monthly retraining
+├── tests/                     # Unit Tests (pytest) — 80+ tests
+│   ├── conftest.py            #   Shared fixtures (customer profiles)
+│   ├── test_handler.py        #   Tier routing, scoring, guardrails
+│   ├── test_api.py            #   HTTP 200/400/422/503 responses
+│   ├── test_database.py       #   Mocked Supabase CRUD operations
+│   ├── test_data_generation.py#   Schema/distribution validation
+│   └── test_versioning.py     #   Model save/rollback/pruning
+├── docs/                      # Documentation
+│   └── supabase_schema.sql    #   Database schema for Supabase
+├── Dockerfile                 # Production Docker image
+├── docker-compose.yml         # Local development with Docker
+├── Makefile                   # Common commands
+├── params.yaml                # Centralized hyperparameter config
+├── .env.example               # Environment variable template
+└── requirements.txt           # Python dependencies
 ```
 
 ---
 
 ## 🧠 Solved: The Cold Start Problem in BNPL
+
 ### The Challenge
 A user tries to buy a ₹15,000 phone on EMI but has never used the app before. A standard model sees "0 history" and feels "This person is a mystery" – it usually defaults to a **Reject**, causing the business to lose a potential loyal customer.
 
@@ -62,7 +155,7 @@ Instead of using one "all-or-nothing" model, we built a tiered system that handl
 #### 🏗️ Model 1: The Cold Start Model (Demographics)
 **"Approval Based on Who You Are"**
 
-*   **When it's used**: During the very first checkout (0-3 months of tenure).
+*   **When it's used**: During the very first checkout (0–3 months of tenure).
 *   **What it looks at**: Static data points like your **Age, Employment stability, Education level, and Monthly Income.**
 *   **The Logic**: It uses a conservative "Demographic Profile" to predict risk. Since we don't know your spending habits yet, it assumes a cautious stance.
 *   **The Result**: It grants a **Safe Entry Limit** (e.g., ₹5,000 to ₹10,000). This allows the customer to join the platform instantly without the business taking a massive risk.
@@ -73,14 +166,7 @@ Instead of using one "all-or-nothing" model, we built a tiered system that handl
 *   **When it's used**: After a user has been with us for 6+ months.
 *   **What it looks at**: Thousands of data points from their **actual app usage** – how quickly they pay bills, their repayment ratios, and missed payment streaks.
 *   **The Logic**: Transaction data is **10x more accurate** than basic demographic data. This model ignores "who you are" and looks only at "how responsible you are."
-*   **The Result**: If the user is reliable, the system **unlocks High Spending Limits** (up to ₹100,000).
-
----
-
-### 🛡️ Why use two models?
-1.  **Stop "Blind Rejections"**: Traditional systems reject new users because they have no data. Our Model 1 gives them a chance.
-2.  **Precision Risk Management**: Behavioral data is the "Gold Standard" of credit. Using it for established users means we can give huge limits to trustworthy people while being very precise about who to stop.
-3.  **Customer Growth Path**: It creates a "gamified" experience where users know that by paying on time, they are "leveling up" from Model 1 to Model 2, earning higher trust and limits.
+*   **The Result**: If the user is reliable, the system **unlocks High Spending Limits** (up to ₹1,00,000).
 
 ---
 
@@ -89,156 +175,424 @@ We implemented a **Tiered Decision Logic** controlled by `ColdStartHandler`:
 
 | Tier | Tenure | Strategy | Spending Limit |
 | :--- | :--- | :--- | :--- |
-| **1. New Shopper** | 0-3 Months | **Demographic Model + Guardrails** | ₹5,000 - ₹10,000 |
-| **2. Building Trust** | 3-6 Months | **Blended Score** (40% Static / 60% Behavior) | ₹25,000 |
-| **3. Power User** | 6+ Months | **Full Behavioral Model** | ₹100,000 |
+| **1. New Shopper** | 0–3 Months | **Demographic Model + Guardrails** | ₹5,000 – ₹10,000 |
+| **2. Building Trust** | 3–6 Months | **Blended Score** (40% Static / 60% Behavior) | up to ₹25,000 |
+| **3. Power User** | 6+ Months | **Full Behavioral Model** | up to ₹1,00,000 |
+
+### 🛡️ Why use two models?
+1.  **Stop "Blind Rejections"**: Traditional systems reject new users because they have no data. Our Model 1 gives them a chance.
+2.  **Precision Risk Management**: Behavioral data is the "Gold Standard" of credit. Using it for established users means we can give huge limits to trustworthy people while being very precise about who to stop.
+3.  **Customer Growth Path**: It creates a "gamified" experience where users know that by paying on time, they are "leveling up" from Model 1 to Model 2, earning higher trust and limits.
 
 ---
 
 ## 📊 Understanding Credit Behavior (The Behavioral Features)
-For established customers, our model stops looking at just "who you are" (Age/Income) and starts looking at **"how you handle money."** Here is a non-technical breakdown of the behavioral metrics our system calculates automatically:
+
+For established customers, our model stops looking at just "who you are" (Age/Income) and starts looking at **"how you handle money."**
 
 ### 🚩 1. The "Red Flags" (Risk Signals)
-These are the most critical features that alert the system to potential defaults.
-*   **Consecutive Missed Payments**: Does the user miss payments back-to-back? A "streak" of missed payments is the strongest predictor that a user won't pay the next bill.
-*   **Recent Default History**: Has the user defaulted in the past? The system tracks how many months it has been since the last issue.
-*   **Late Payment Count**: Simply counting how many times a user was late in the last 3 months.
+*   **Consecutive Missed Payments**: Does the user miss payments back-to-back? The strongest predictor of future default.
+*   **Recent Default History**: Has the user defaulted in the past? Tracks months since last default.
+*   **Late Payment Count**: Number of late payments in the last 3 months.
 
 ### 💳 2. Financial Discipline (Repayment Habits)
-These metrics measure if a user is living within their means.
-*   **Repayment Ratio**: If a user spends ₹1,000, do they pay back the full ₹1,000 or only ₹400? Higher ratios mean better discipline.
-*   **Credit Limit Usage (Utilization)**: Is the user constantly maxing out their limit? Using 90% of your limit is much riskier than using 20%.
-*   **Payment Trends**: Is the user's behavior getting better or worse? If someone's repayment ratio is dropping every month, the system flags them as "Deteriorating."
+*   **Repayment Ratio**: If a user spends ₹1,000, do they pay back the full ₹1,000 or only ₹400?
+*   **Credit Limit Usage (Utilization)**: Is the user constantly maxing out their limit?
+*   **Payment Trends**: Is the user's behavior getting better or worse month-over-month?
 
 ### 💰 3. Financial Health (Affordability)
-These metrics ensure we aren't lending more than a user can actually afford.
-*   **Debt-to-Income Ratio**: The system compares total outstanding debt against the user's monthly salary.
-*   **Income Affordability Score**: A safety score that checks if there is "breathing room" in the user's budget after paying their BNPL bills.
-*   **Debt Growth Rate**: Is the user's debt growing faster than they can pay it off?
+*   **Debt-to-Income Ratio**: Total outstanding debt vs. monthly salary.
+*   **Income Affordability Score**: Is there "breathing room" after paying BNPL bills?
+*   **Debt Growth Rate**: Is debt growing faster than repayment?
 
 ### 🛍️ 4. Shopping Habits (Engagement)
-These help the model understand if the user is a regular, stable shopper.
-*   **Active Months**: Has the user been shopping consistently over the last quarter, or was it a one-time spending spree?
-*   **Average Bill Size**: Helps distinguish between someone buying groceries (stable) vs. someone buying expensive electronics (potential high-risk "hit and run").
+*   **Active Months**: Consistent shopping vs. one-time spending spree?
+*   **Average Bill Size**: Groceries (stable) vs. expensive electronics (higher risk).
 
 ### ⚖️ 5. The Internal "Risk Score"
-Finally, our pipeline combines all of the above into a single **0 to 100 Risk Score**. 
-*   **0-20**: Very Safe (Prime User)
-*   **20-50**: Caution (Moderate Risk)
+Our pipeline combines all features into a **0 to 100 Risk Score**:
+*   **0–20**: Very Safe (Prime User)
+*   **20–50**: Caution (Moderate Risk)
 *   **50+**: High Alert (Extreme Risk)
 
 ---
 
 ## ⚡ Installation & Setup
 
-1.  **Clone the Repository**
-    ```bash
-    git clone https://github.com/your-repo/bnpl-credit-model.git
-    cd bnpl-credit-model
-    ```
+### 1. Clone & Install
+```bash
+git clone https://github.com/your-repo/baaki-credit-scoring.git
+cd baaki-credit-scoring
+pip install -r requirements.txt
+```
 
-2.  **Install Dependencies**
-    ```bash
-    pip install -r requirements.txt
-    ```
+### 2. Environment Variables
+Copy the example env file and fill in your credentials:
+```bash
+cp .env.example .env
+```
 
-3.  **Run the Data Pipeline**
-    The system now automatically syncs your CSV data:
-    ```bash
-    # Option A: One-time calculation
-    python src/pipeline.py
-    
-    # Option B: Automatic "Watch Mode" (Recalculates every time you save your CSV)
-    python src/pipeline.py --watch
-    ```
+**.env** contents:
+```env
+# Supabase (optional — API works without it, but DB features are disabled)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-key
+
+# Security
+ADMIN_API_KEY=your-secret-key-for-admin-endpoints
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+```
+
+> **Note**: The API runs fine *without* Supabase credentials — database features (customer CRUD, retraining log) are simply disabled. Models, scoring, and monitoring all work locally.
+
+### 3. Generate Data & Train Models
+```bash
+make pipeline
+# or manually:
+python scripts/generate_all_data.py
+python -m src.training.train
+```
+
+### 4. Start the API
+```bash
+make serve
+# or:
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+```
 
 ---
 
-## 🏃‍♂️ How to Run
+## 🐳 Docker Deployment
 
-### 1. Training & Auto-Recalibration
-The training scripts are now **pipeline-aware**. They automatically regenerate features from raw data before training:
 ```bash
-python src/train_model.py
-```
-*This ensures you are always training on the latest version of your CSV data.*
-
-### 2. Start the API Server
-Launch the production-ready REST API for the checkout system:
-```bash
-uvicorn src.app:app --reload
+# Build and run with Docker Compose
+make docker
+# or:
+docker-compose up --build
 ```
 
-### 3. Open Swagger UI
-Visit **http://127.0.0.1:8000/docs** to test endpoints interactively.
+The `docker-compose.yml` mounts `data/` and `models/` as volumes, sets environment variables from `.env`, and exposes port `8000`.
+
+---
+
+## 🔌 API Reference
+
+### Base URLs
+- **Health & Metrics**: `/`, `/health`, `/metrics`
+- **Scoring**: `/api/v1/predict/*`
+- **Data Management**: `/api/v1/customers/*`
+- **Admin** (API key required): `/api/v1/admin/*`
+
+### Health Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | API status & model availability |
+| `GET` | `/health` | Readiness probe (503 if models not loaded) |
+| `GET` | `/metrics` | Prometheus-compatible metrics + drift detection |
+
+### Scoring Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/predict/auto` | **Recommended.** Auto-routes to correct model by `account_age_months` |
+| `POST` | `/api/v1/predict/cold-start` | Force cold start model (new customers) |
+| `POST` | `/api/v1/predict/full` | Force full behavioral model (established customers) |
+
+### Data Management Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/customers/` | Add a new customer profile |
+| `POST` | `/api/v1/customers/{id}/behavior` | Add monthly behavior record |
+| `GET` | `/api/v1/customers/{id}/history` | View customer's full history |
+
+### Admin Endpoints (require `X-API-Key` header)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/admin/retrain` | Trigger manual retraining |
+| `GET` | `/api/v1/admin/retraining-log` | View retraining history |
+| `GET` | `/api/v1/admin/model-versions/{name}` | List all saved versions of a model |
+| `POST` | `/api/v1/admin/model-versions/{name}/rollback` | Roll back to a specific version |
 
 ---
 
 ## 🔌 API Usage Examples
 
 ### 1. Score a New User (At Checkout)
-**Endpoint:** `POST /predict/cold-start`
+**Endpoint:** `POST /api/v1/predict/auto`
 
-*Input (User verifying profile at checkout):*
 ```json
 {
   "age": 28,
   "employment_status": "Salaried",
   "monthly_income": 85000,
   "education_level": "Graduate",
+  "credit_limit": 80000,
   "city_tier": "Tier-1",
   "dependents": 0,
   "residence_type": "Rented",
-  "account_age_months": 1
+  "account_age_months": 1,
+  "util_avg_3m": 0, "payment_ratio_avg_3m": 1.0,
+  "max_outstanding_3m": 0, "avg_txn_amt_3m": 0,
+  "avg_txn_count_3m": 0, "late_payments_3m": 0,
+  "missed_due_count_3m": 0, "missed_due_last_1m": 0,
+  "payment_ratio_last_1m": 1.0, "outstanding_delta_3m": 0,
+  "bnpl_active_last_1m": 0, "consecutive_missed_due": 0,
+  "payment_ratio_min_3m": 1.0, "worst_util_3m": 0,
+  "ever_defaulted": 0, "default_count_history": 0,
+  "months_since_last_default": 0, "outstanding_to_income_pct": 0,
+  "outstanding_to_limit_pct": 0, "income_affordability_score": 1.0,
+  "debt_burden_category": 0, "payment_ratio_trend": 0,
+  "utilization_trend": 0, "outstanding_growth_rate": 0,
+  "is_deteriorating": 0, "active_months_3m": 0,
+  "avg_util_when_active": 0, "snapshot_account_age": 0,
+  "account_age_bucket": 0, "risk_score": 0, "snapshot_month": 1
 }
 ```
 
-*Response:*
+**Response:**
 ```json
 {
-  "model_type": "cold_start_guarded",
+  "model_type": "auto_routed",
+  "customer_tier": 1,
+  "tier_description": "New Customer (Cold Start)",
   "credit_score": 704,
   "decision": "Approve_Low_Limit",
   "max_credit_limit": 10000,
-  "recommendation": "Cold start model has limited predictive power..."
+  "model_used": "cold_start_model + guardrails",
+  "recommendation": "New customer — monitor closely. Consider limit increase after 3 months of on-time payments.",
+  "note": "Cold start model uses demographic features only. Conservative limits applied until behavioral history builds."
 }
 ```
-*Result: User is approved for ₹10,000 buy-now-pay-later limit.*
 
-### 2. Score a Power User (Limit Increase)
-**Endpoint:** `POST /predict/full`
+### 2. Trigger Manual Retraining
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/retrain \
+  -H "X-API-Key: your-secret-key"
+```
 
-*Input (User requesting higher limit):*
+### 3. Check Model Drift & Metrics
+```bash
+curl http://localhost:8000/metrics
+```
+
+**Response includes:**
 ```json
 {
-  "age": 45,
-  "monthly_income": 150000,
-  "account_age_months": 48,
-  "util_avg_3m": 0.10,
-  "payment_ratio_avg_3m": 1.0,
-  "missed_due_count_3m": 0,
-  ... (other behavioral features)
+  "requests_total": 1542,
+  "requests_scoring": 890,
+  "latency_avg_ms": 12.4,
+  "latency_p95_ms": 28.1,
+  "models_loaded": true,
+  "model_versions": {
+    "cold_start": "20260306_021500",
+    "full_model": "20260306_021500"
+  },
+  "prediction_drift": {
+    "total_predictions": 890,
+    "drift": { "detected": false, "mean_shift": 0.02 },
+    "auc": { "last_known": 0.87, "alert_threshold": 0.65 },
+    "alerts": []
+  }
 }
 ```
 
-*Response:*
-```json
-{
-  "model_type": "full_model",
-  "credit_score": 815,
-  "decision": "Approve",
-  "max_credit_limit": 100000
-}
+### 4. Roll Back a Model
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/model-versions/cold_start_model/rollback \
+  -H "X-API-Key: your-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{"version": "20260305_140000"}'
 ```
-*Result: User unlocked for ₹100,000 limit.*
+
+---
+
+## 🔒 Security Features
+
+| Feature | Implementation | Details |
+|---------|---------------|---------|
+| **CORS** | `CORSMiddleware` | Locked to `CORS_ORIGINS` env var (default: `localhost:3000,5173`) |
+| **Rate Limiting** | `slowapi` | Prevents API abuse with configurable request limits |
+| **API Key Auth** | `X-API-Key` header | Required for all `/admin/*` endpoints |
+| **Input Validation** | Pydantic schemas | Age 18–100, income > 0, credit limit ≤ ₹1,00,000 |
+
+---
+
+## 📈 Monitoring & Model Drift Detection
+
+The `/metrics` endpoint provides real-time monitoring:
+
+- **Request Metrics**: Total requests, scoring requests, error count, avg/p95 latency
+- **Model Status**: Which models are loaded, current version numbers
+- **Prediction Drift**: Compares recent prediction distribution against a baseline
+- **AUC Alerting**: Warns when model AUC drops below 0.65 after retraining
+- **Decision Distribution**: Tracks approve/reject ratios to spot anomalies
+
+### Alerts
+The system automatically generates alerts for:
+- 🚨 AUC below threshold after retraining
+- ⚠️ Prediction mean shift > 10% from baseline
+- ⚠️ Rejection rate exceeding 50%
+- ⚠️ Approval rate exceeding 90% (too permissive)
+
+---
+
+## 📁 Model Versioning & Rollback
+
+Every training run saves:
+1. **Latest copy**: `models/cold_start_model.pkl` (always the newest)
+2. **Versioned copy**: `models/cold_start_model_20260306_021500.pkl` (timestamped backup)
+3. **Manifest entry**: `models/model_manifest.json` (AUC, algorithm, timestamp)
+
+**Auto-pruning**: Only the last 10 versions are kept; older ones are automatically deleted.
+
+**Rollback via API**:
+```bash
+# List available versions
+curl http://localhost:8000/api/v1/admin/model-versions/cold_start_model \
+  -H "X-API-Key: your-key"
+
+# Roll back to a specific version
+curl -X POST http://localhost:8000/api/v1/admin/model-versions/cold_start_model/rollback \
+  -H "X-API-Key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"version": "20260305_140000"}'
+```
+
+---
+
+## 🔄 Auto-Retraining Pipeline
+
+The system automatically retrains models on the **1st of every month at 02:00 AM**:
+
+```
+[1] Export Supabase → CSV
+[2] Run feature engineering (snap pipeline)
+[3] Train cold start + full models (best of 3 algorithms)
+[4] Hot-reload into running API (zero downtime)
+[5] Log results to retraining_log table
+```
+
+Manual retraining: `POST /api/v1/admin/retrain` with API key.
+
+---
+
+## 🧪 Testing
+
+Run the full test suite:
+```bash
+make test
+# or:
+pytest tests/ -v --tb=short
+```
+
+| Test File | Tests | Coverage |
+|-----------|-------|----------|
+| `test_handler.py` | 25 | Tier routing, scoring, guardrails, credit limits |
+| `test_api.py` | 9 | HTTP 200/422/503 responses, input validation |
+| `test_database.py` | 16 | Mocked Supabase CRUD, seed, export |
+| `test_data_generation.py` | 16 | Schema validation, distribution checks |
+| `test_versioning.py` | 16 | Save, list, rollback, auto-pruning |
+
+> **Note**: `test_database.py` uses mocked Supabase — no real database needed to run tests.
 
 ---
 
 ## 📊 Performance & Results
 *   **Full Model AUC:** 0.85+ (Excellent discrimination on established users)
 *   **Cold Start Logic:** Successfully minimizes default rates.
-    *   *High Risk New User* -> **Rejected** or **Capped at ₹5k**.
-    *   *Safe New User* -> **Approved** but **Capped at ₹15k**.
+    *   *High Risk New User* → **Rejected** or **Capped at ₹5k**.
+    *   *Safe New User* → **Approved** but **Capped at ₹10k**.
+*   **API Latency**: < 30ms p95 for scoring endpoints
+
+---
+
+## 🗄️ Supabase Setup (Optional)
+
+Supabase is a free, hosted PostgreSQL database. The API works **without** Supabase (scoring, monitoring, and model versioning all work locally), but you'll need it for customer data storage and retraining logs.
+
+### Step 1: Create a Supabase Project
+
+1. Go to **[supabase.com](https://supabase.com)** and sign in (GitHub login works)
+2. Click **"New Project"**
+3. Choose a name (e.g., `baaki-credit-scoring`), set a database password, and select a region
+4. Wait ~2 minutes for the project to be provisioned
+
+### Step 2: Get Your Project URL and API Key
+
+1. Once your project is ready, go to **Project Settings** (⚙️ gear icon in the left sidebar)
+2. Click **"API"** under the **Configuration** section
+3. You'll see two values you need:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Project Settings → API                                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Project URL                                                    │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ https://abcdefghijk.supabase.co                           │  │  ← Copy this as SUPABASE_URL
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  Project API Keys                                               │
+│                                                                 │
+│  anon / public                                                  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOi...      │  │  ← Copy this as SUPABASE_KEY
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  service_role / secret  (⚠️ DO NOT use this one)                │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOi...      │  │  ← Ignore this
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+> ⚠️ **Use the `anon` key**, NOT the `service_role` key. The anon key is safe for client-side use.
+
+### Step 3: Add Credentials to `.env`
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and paste your values:
+```env
+SUPABASE_URL=https://abcdefghijk.supabase.co
+SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOi...
+
+# Also set your admin API key (any strong random string)
+ADMIN_API_KEY=my-secret-admin-key-change-this
+
+# Lock CORS to your frontend domain(s)
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+```
+
+### Step 4: Create the Database Tables
+
+1. In your Supabase dashboard, click **"SQL Editor"** (left sidebar)
+2. Click **"New Query"**
+3. Copy-paste the contents of `docs/supabase_schema.sql` into the editor
+4. Click **"Run"** (or press `Ctrl+Enter`)
+5. You should see three tables created: `customers`, `credit_behavior_monthly`, `retraining_log`
+
+### Step 5: Start the API
+
+```bash
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+On startup, the API will automatically:
+- ✅ Connect to Supabase
+- ✅ Seed existing CSV data into the database (if tables are empty)
+- ✅ Start the monthly retraining scheduler
+
+> **Troubleshooting**: If you see `⚠️ SUPABASE_URL / SUPABASE_KEY not set`, double-check your `.env` file is in the project root and contains the correct values.
+
+---
 
 ## 🛡️ License
 MIT License.

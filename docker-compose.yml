@@ -1,0 +1,29 @@
+# BAAKI Credit Scoring — Docker Compose (Local Dev)
+# Usage:
+#   docker-compose up --build        # Start API
+#   docker-compose run app make data # Generate data
+#   docker-compose run app make train # Train models
+
+
+version: "3.8"
+
+services:
+  app:
+    build: .
+    container_name: baaki-scoring
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+    volumes:
+      - ./data:/app/data        # persist generated data
+      - ./models:/app/models    # persist trained models
+      - ./mlruns:/app/mlruns    # persist MLflow experiments
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

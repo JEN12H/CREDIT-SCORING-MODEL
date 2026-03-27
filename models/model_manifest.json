@@ -1,0 +1,28 @@
+{
+  "models": {
+    "cold_start_model": {
+      "current_version": "20260316_175403",
+      "versions": [
+        {
+          "version": "20260316_175403",
+          "filename": "cold_start_model_20260316_175403.pkl",
+          "saved_at": "2026-03-16T17:54:04.114528",
+          "auc": 0.581023935848834,
+          "algorithm": "Random Forest"
+        }
+      ]
+    },
+    "credit_score_model": {
+      "current_version": "20260316_175404",
+      "versions": [
+        {
+          "version": "20260316_175404",
+          "filename": "credit_score_model_20260316_175404.pkl",
+          "saved_at": "2026-03-16T17:54:04.145306",
+          "auc": 0.7846166329728106,
+          "algorithm": "Gradient Boosting"
+        }
+      ]
+    }
+  }
+}
