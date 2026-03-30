@@ -19,7 +19,12 @@ mlruns/
 # Test output
 test_output.txt
 test_results.txt
+test_detail.txt
 .pytest_cache/
+
+# Local-only files
+error_log.txt
+future_version.md
 
 # Jupyter Notebooks
 .ipynb_checkpoints

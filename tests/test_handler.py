@@ -62,11 +62,11 @@ class TestScoringUtilities:
         score = ColdStartHandler._prob_to_score(1.5)
         assert score >= 300
 
-    def test_decision_approve(self):
-        assert ColdStartHandler._score_to_decision(800) == "Approve"
+    def test_decision_approve_excellent(self):
+        assert ColdStartHandler._score_to_decision(800) == "Approve_Excellent"
 
-    def test_decision_approve_low_limit(self):
-        assert ColdStartHandler._score_to_decision(700) == "Approve_Low_Limit"
+    def test_decision_approve_good(self):
+        assert ColdStartHandler._score_to_decision(700) == "Approve_Good"
 
     def test_decision_conditional(self):
         assert ColdStartHandler._score_to_decision(600) == "Conditional"
@@ -82,6 +82,12 @@ class TestScoringUtilities:
 
     def test_decision_boundary_550(self):
         assert ColdStartHandler._score_to_decision(550) == "Conditional"
+
+    def test_decision_boundary_800(self):
+        assert ColdStartHandler._score_to_decision(800) == "Approve_Excellent"
+
+    def test_decision_boundary_700(self):
+        assert ColdStartHandler._score_to_decision(700) == "Approve_Good"
 
 
 class TestProvisionalLimit:

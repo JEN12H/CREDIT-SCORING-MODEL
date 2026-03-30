@@ -6,16 +6,35 @@ on:
   pull_request:
     branches: [ "main", "master" ]
 
+env:
+  PYTHONDONTWRITEBYTECODE: 1
+  PYTHONUNBUFFERED: 1
+  # Stub Supabase credentials so the DB layer doesn't crash on import
+  SUPABASE_URL: ""
+  SUPABASE_KEY: ""
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.12"]
+
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python 3.9
+    - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
-        python-version: "3.9"
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
 
     - name: Install dependencies
       run: |
@@ -24,16 +43,50 @@ jobs:
         mkdir -p data models
 
     - name: Run Unit Tests
-      run: pytest tests/ -v --tb=short
+      run: pytest tests/ -v --tb=short --junitxml=test-results.xml
 
-    - name: Run Data Pipeline
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-py${{ matrix.python-version }}
+        path: test-results.xml
+
+  data-pipeline:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Cache pip packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
       run: |
-        echo "Generating data..."
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        mkdir -p data models
+
+    - name: Generate Synthetic Data
+      run: |
+        echo "Generating customer profiles..."
         python -m src.data.generate_customers
+
+        echo "Generating behavioral data..."
         python -m src.data.generate_behavior
 
-        echo "Running feature engineering..."
-        python -m src.data.feature_pipeline
+    - name: Run Feature Engineering
+      run: python -m src.data.feature_pipeline
 
     - name: Train & Validate Models
       run: python -m src.training.train
@@ -41,7 +94,7 @@ jobs:
     - name: Run Model Evaluation
       run: python -m src.training.evaluate
 
-    - name: Upload Artifacts
+    - name: Upload Model Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: model-artifacts
@@ -50,3 +103,4 @@ jobs:
           *.png
           test_predictions.csv
           cold_start_training.log
+        if-no-files-found: warn

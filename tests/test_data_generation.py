@@ -39,7 +39,7 @@ class TestGenerateCustomers:
             assert col in self.df.columns, f"Missing column: {col}"
 
     def test_age_range(self):
-        assert self.df["age"].between(18, 70).all()
+        assert self.df["age"].between(21, 75).all()
 
     def test_income_positive(self):
         assert (self.df["monthly_income"] > 0).all()
@@ -65,15 +65,15 @@ class TestCreditLimitAssignment:
 
     def test_cap_at_100000(self):
         """Even very high income should be capped at ₹1,00,000."""
-        limit = assign_credit_limit(5_00_000, "Salaried", "Postgraduate", 40)
+        limit = assign_credit_limit("Salaried", 5_00_000, "Postgraduate", 40)
         assert limit <= 1_00_000
 
     def test_minimum_5000(self):
-        limit = assign_credit_limit(5_000, "Daily Wage", "Primary", 55)
+        limit = assign_credit_limit("Daily Wage", 5_000, "Primary", 55)
         assert limit >= 5_000
 
     def test_rounded_to_500(self):
-        limit = assign_credit_limit(50_000, "Salaried", "Graduate", 30)
+        limit = assign_credit_limit("Salaried", 50_000, "Graduate", 30)
         assert limit % 500 == 0
 
 

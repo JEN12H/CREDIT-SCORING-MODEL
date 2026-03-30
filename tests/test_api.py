@@ -22,8 +22,16 @@ def client():
     with patch("src.db.supabase.ping", return_value=False), \
          patch("src.db.supabase.seed_from_csv", return_value={}), \
          patch("src.scheduler.retraining.start_scheduler"), \
-         patch("src.scheduler.retraining.stop_scheduler"):
+         patch("src.scheduler.retraining.stop_scheduler"), \
+         patch("src.core.handler.ColdStartHandler.__init__", side_effect=FileNotFoundError("mock")):
         from src.api.app import app
+        # Ensure handler is None (models not loaded)
+        import src.api.app as app_module
+        app_module.handler = None
+        # Also ensure route modules have no handler
+        from src.api.routes import scoring, admin
+        scoring._handler = None
+        admin._handler = None
         with TestClient(app) as c:
             yield c
 
@@ -99,32 +107,7 @@ class TestScoringValidation:
 
     def test_predict_auto_returns_503_no_handler(self, client):
         """With no trained models, valid input should return 503."""
-        payload = {
-            "age": 30,
-            "employment_status": "Salaried",
-            "education_level": "Graduate",
-            "monthly_income": 50000.0,
-            "credit_limit": 80000.0,
-            "city_tier": "Tier-1",
-            "dependents": 1,
-            "residence_type": "Rented",
-            "account_age_months": 0,
-            "util_avg_3m": 0, "payment_ratio_avg_3m": 1.0,
-            "max_outstanding_3m": 0, "avg_txn_amt_3m": 0,
-            "avg_txn_count_3m": 0, "late_payments_3m": 0,
-            "missed_due_count_3m": 0, "missed_due_last_1m": 0,
-            "payment_ratio_last_1m": 1.0, "outstanding_delta_3m": 0,
-            "bnpl_active_last_1m": 0, "consecutive_missed_due": 0,
-            "payment_ratio_min_3m": 1.0, "worst_util_3m": 0,
-            "ever_defaulted": 0, "default_count_history": 0,
-            "months_since_last_default": 0, "outstanding_to_income_pct": 0,
-            "outstanding_to_limit_pct": 0, "income_affordability_score": 1.0,
-            "debt_burden_category": 0, "payment_ratio_trend": 0,
-            "utilization_trend": 0, "outstanding_growth_rate": 0,
-            "is_deteriorating": 0, "active_months_3m": 0,
-            "avg_util_when_active": 0, "snapshot_account_age": 0,
-            "account_age_bucket": 0, "risk_score": 0, "snapshot_month": 1,
-        }
+        payload = {"customer_id": 1}
         response = client.post("/api/v1/predict/auto", json=payload)
         assert response.status_code == 503
 
