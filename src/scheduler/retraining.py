@@ -25,6 +25,12 @@ MODELS_DIR     = os.path.join(PROJECT_ROOT, "models")
 def run_retraining_job(trigger: str = "scheduled", handler=None) -> dict:
     """
     Full retraining pipeline. Called by the scheduler OR the /admin/retrain endpoint.
+    Steps:
+      0. Aggregate raw_transactions → credit_behavior_monthly
+      1. Export Supabase → CSV
+      2. Feature engineering (snap pipeline)
+      3. Train both models
+      4. Hot-reload into live API
     """
     from src.db.supabase import export_to_csv, log_retraining
     from src.data.feature_pipeline import run_snap_pipeline
@@ -34,6 +40,12 @@ def run_retraining_job(trigger: str = "scheduled", handler=None) -> dict:
     result = {"success": False, "cold_start_auc": None, "full_model_auc": None, "message": ""}
 
     try:
+        # Step 0 — Aggregate raw_transactions → credit_behavior_monthly
+        logger.info("Step 0: Aggregating raw_transactions into monthly behavior records...")
+        from src.data.aggregate_transactions import aggregate_raw_to_monthly
+        aggregate_raw_to_monthly()
+        logger.info("✅ Raw transaction aggregation complete")
+
         # Step 1 — Export Supabase → CSV
         logger.info("Exporting data from Supabase...")
         export_stats = export_to_csv(CUSTOMERS_PATH, BEHAVIOR_PATH)

@@ -37,7 +37,7 @@ def aggregate_raw_to_monthly(output_path="data/credit_behavior_monthly.csv"):
     print("Aggregating into monthly trends...")
     # Load into dataframe
     df = pd.DataFrame(all_txns)
-    df["created_at"] = pd.to_datetime(df["created_at"])
+    df["created_at"] = pd.to_datetime(df["created_at"], format="mixed", utc=True)
     df["month"] = df["created_at"].dt.month
     df["year"] = df["created_at"].dt.year
     df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0.0)
