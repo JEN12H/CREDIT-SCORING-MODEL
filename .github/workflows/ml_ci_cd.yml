@@ -9,9 +9,9 @@ on:
 env:
   PYTHONDONTWRITEBYTECODE: 1
   PYTHONUNBUFFERED: 1
-  # Stub Supabase credentials so the DB layer doesn't crash on import
-  SUPABASE_URL: ""
-  SUPABASE_KEY: ""
+  # Stub Turso credentials so the DB layer doesn't complain during CI checks
+  TURSO_URL: ""
+  TURSO_AUTH_TOKEN: ""
 
 jobs:
   test:

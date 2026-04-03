@@ -7,7 +7,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException
 from src.api.schemas import ColdStartInput, FullModelInput, ScoringResponse, PredictionRequest
 from src.core.monitoring import prediction_tracker
-from src.db.supabase import get_customer_profile, get_customer_history
+from src.db.turso import get_customer_profile, get_customer_history
 from src.data.feature_pipeline import calculate_single_user_features
 
 logger = logging.getLogger(__name__)
@@ -57,13 +57,33 @@ def predict_auto(request: PredictionRequest):
         history = get_customer_history(request.customer_id)
         
         # 2. Calculate ML features dynamically
+        #    If history is too short, fall back to cold-start model automatically
         try:
             features = calculate_single_user_features(profile, history)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=f"Missing feature data: {str(e)}")
-            
-        # 3. Model Evaluation
-        result = _handler.score_customer(features)
+            # 3a. Full model scoring (enough history available)
+            result = _handler.score_customer(features)
+        except ValueError:
+            # 3b. Cold-start fallback (new customer, < 4 months history)
+            logger.info(f"Customer {request.customer_id}: insufficient history ({len(history)} months), using cold-start model.")
+            cold_start_data = {
+                "age":                profile.get("age", 25),
+                "employment_status":  profile.get("employment_status", "Salaried"),
+                "education_level":    profile.get("education_level", "Graduate"),
+                "monthly_income":     profile.get("monthly_income", 0),
+                "credit_limit":       profile.get("credit_limit", 0),
+                "city_tier":          profile.get("city_tier", "Tier-2"),
+                "dependents":         profile.get("dependents", 0),
+                "residence_type":     profile.get("residence_type", "Rented"),
+                "account_age_months": profile.get("account_age_months", 0),
+            }
+            result = _handler.score_cold_start(cold_start_data)
+            tier, tier_desc = _handler.get_customer_tier(cold_start_data["account_age_months"])
+            result.update({
+                "customer_tier":      tier,
+                "tier_description":   tier_desc,
+                "account_age_months": cold_start_data["account_age_months"],
+                "note":               f"Scored using cold-start model ({len(history)} months of history available).",
+            })
         
         # 4. Final Response Generation
         response = _build_response(result, model_type="auto_routed")

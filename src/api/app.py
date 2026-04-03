@@ -28,7 +28,7 @@ if PROJECT_ROOT not in sys.path:
 from src.core.handler import ColdStartHandler
 from src.core.monitoring import prediction_tracker
 from src.core.versioning import list_model_versions, get_current_version, rollback_model
-from src.db.supabase import ping, seed_from_csv
+from src.db.turso import ping, seed_from_csv
 from src.scheduler.retraining import start_scheduler, stop_scheduler
 from src.api.routes import scoring, data, admin
 
@@ -126,17 +126,17 @@ async def startup_event():
     scoring.set_handler(handler)
     admin.set_handler(handler)
 
-    # Seed Supabase from existing CSVs (only if tables are empty)
+    # Seed Turso from existing CSVs (only if tables are empty)
     try:
         if ping():
             customers_csv = os.path.join(PROJECT_ROOT, "data", "customers.csv")
             behavior_csv  = os.path.join(PROJECT_ROOT, "data", "credit_behavior_monthly.csv")
             result = seed_from_csv(customers_csv, behavior_csv)
-            logger.info(f"✅ Supabase seeded: {result}")
+            logger.info(f"✅ Turso seeded: {result}")
         else:
-            logger.warning("Supabase unreachable at startup — skipping seed (check .env credentials)")
+            logger.warning("Turso unreachable at startup — skipping seed (check .env credentials)")
     except Exception as e:
-        logger.warning(f"Supabase seed skipped: {e}")
+        logger.warning(f"Turso seed skipped: {e}")
 
     # Start monthly retraining scheduler
     try:

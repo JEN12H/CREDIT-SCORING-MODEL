@@ -1,13 +1,13 @@
 """
 Data Routes
-Customer and behavior CRUD endpoints backed by Supabase.
+Customer and behavior CRUD endpoints backed by Turso.
 """
 import logging
 from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from src.api.schemas import BehaviorCreate, CustomerCreate
-from src.db.supabase import (add_behavior_record, add_customer, get_customer, get_customer_history, get_raw_transaction_history, supabase)
+from src.db.turso import (add_behavior_record, add_customer, get_customer, get_customer_history, get_raw_transaction_history, add_raw_transaction)
 from src.data.generate_customers import assign_credit_limit
 
 class RawTransactionCreate(BaseModel):
@@ -44,14 +44,16 @@ def create_customer(customer: CustomerCreate):
             )
             logger.info(
                 f"Auto-assigned credit_limit=₹{data['credit_limit']:,} "
-                f"for customer {data['customer_id']} "
-                f"({data['employment_status']}, income=₹{data['monthly_income']:,})"
+                f"(employment={data['employment_status']}, income=₹{data['monthly_income']:,})"
             )
 
         result = add_customer(data)
+        generated_id = result.get("customer_id")
         return {
             "status": "created",
-            "credit_limit_assigned": data["credit_limit"],  # show frontend what was set
+            "customer_id": generated_id,                     # ← frontend MUST save this
+            "credit_limit_assigned": result.get("credit_limit", data["credit_limit"]),
+            "message": f"Customer created successfully. Save customer_id={generated_id} for future API calls.",
             "data": result,
         }
     except ValueError as e:
@@ -113,12 +115,12 @@ def add_raw_transaction(customer_id: int, txn: RawTransactionCreate):
             "amount":            txn.amount,
             "transaction_type":  txn.transaction_type,
         }
-        result = supabase.table("raw_transactions").insert(payload).execute()
+        result = add_raw_transaction(payload)
         logger.info(f"Transaction logged: customer={customer_id}, type={txn.transaction_type}, amount=₹{txn.amount}")
         return {
             "status":  "created",
             "message": f"₹{txn.amount:.2f} {txn.transaction_type} logged for customer {customer_id}",
-            "data":    result.data[0] if result.data else {},
+            "data":    result,
         }
     except HTTPException:
         raise

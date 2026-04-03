@@ -1,25 +1,25 @@
 """
-src.db — Database Layer (Supabase / PostgreSQL)
-=================================================
-Manages all persistence using Supabase (hosted PostgreSQL).
+src.db — Database Layer (Turso / libSQL)
+=========================================
+Manages all persistence using Turso (hosted libSQL / SQLite).
 Provides connection management, CRUD operations, and data import/export.
 
 Functions:
-    ping()                  — Check Supabase connectivity
+    ping()                  — Check Turso connectivity
     add_customer()          — Insert a new customer profile
     get_customer()          — Fetch a customer by ID
     update_customer()       — Update customer fields
     add_behavior_record()   — Insert a monthly behavior record
     get_customer_history()  — Retrieve full behavioral history
-    seed_from_csv()         — Bulk-import CSVs into Supabase (one-time setup)
-    export_to_csv()         — Export Supabase tables → local CSVs (for retraining)
+    seed_from_csv()         — Bulk-import CSVs into Turso (one-time setup)
+    export_to_csv()         — Export Turso tables -> local CSVs (for retraining)
     log_retraining()        — Write a retraining audit entry
     get_retraining_log()    — Fetch recent retraining audit entries
 
-Schema: see docs/supabase_schema.sql
+Credentials: set TURSO_URL and TURSO_AUTH_TOKEN in .env
 """
 
-from src.db.supabase import (
+from src.db.turso import (
     ping,
     add_customer,
     get_customer,

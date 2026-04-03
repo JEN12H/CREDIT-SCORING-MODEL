@@ -5,7 +5,7 @@
 ![MLflow](https://img.shields.io/badge/MLflow-Tracking-orange)
 ![Scikit-Learn](https://img.shields.io/badge/sklearn-1.2%2B-yellow)
 ![Docker](https://img.shields.io/badge/Docker-Ready-blue)
-![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-darkgreen)
+![Turso](https://img.shields.io/badge/Turso-libSQL-brightgreen)
 ![Tests](https://img.shields.io/badge/Tests-80%2B%20passing-brightgreen)
 
 ---
@@ -54,7 +54,7 @@ The biggest challenge in BNPL is the **Cold Start Problem**: new users want to b
 - 📁 **Model Versioning**: Timestamped model saves with rollback via API
 - 🐳 **Docker**: One-command deployment with `docker-compose`
 - 🧪 **Test Suite**: 80+ unit tests covering handler, API, database, and versioning
-- 🗄️ **Supabase**: Cloud-hosted PostgreSQL for customer data and retraining logs
+- 🗄️ **Turso**: Cloud-hosted libSQL (SQLite-compatible) for customer data and retraining logs
 
 ---
 
@@ -99,7 +99,7 @@ The biggest challenge in BNPL is the **Cold Start Problem**: new users want to b
 │   └── *_YYYYMMDD_HHMMSS.pkl #   Timestamped model backups
 ├── scripts/                   # CLI utilities
 │   ├── generate_all_data.py   #   One-click data pipeline
-│   └── seed_db.py             #   Supabase seeder
+│   └── seed_db.py             #   Turso seeder (CSV → Turso)
 ├── src/                       # Source code
 │   ├── api/                   # FastAPI Application
 │   │   ├── app.py             #   App init, CORS, rate limiting, metrics
@@ -120,14 +120,15 @@ The biggest challenge in BNPL is the **Cold Start Problem**: new users want to b
 │   │   ├── train.py           #   Dual-model training pipeline
 │   │   └── evaluate.py        #   Model evaluation suite
 │   ├── db/                    # Database Layer
-│   │   └── supabase.py        #   Supabase CRUD, export, retraining log
+│   │   ├── turso.py           #   Turso CRUD, export, retraining log (active)
+│   │   └── supabase.py        #   Legacy Supabase reference (kept, not active)
 │   └── scheduler/             # Background Jobs
 │       └── retraining.py      #   APScheduler monthly retraining
 ├── tests/                     # Unit Tests (pytest) — 80+ tests
 │   ├── conftest.py            #   Shared fixtures (customer profiles)
 │   ├── test_handler.py        #   Tier routing, scoring, guardrails
 │   ├── test_api.py            #   HTTP 200/400/422/503 responses
-│   ├── test_database.py       #   Mocked Supabase CRUD operations
+│   ├── test_database.py       #   Mocked Turso CRUD operations
 │   ├── test_data_generation.py#   Schema/distribution validation
 │   └── test_versioning.py     #   Model save/rollback/pruning
 ├── docs/                      # Documentation
@@ -234,16 +235,16 @@ cp .env.example .env
 
 **.env** contents:
 ```env
-# Supabase (optional — API works without it, but DB features are disabled)
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-anon-key
+# Turso (required for DB features — customer CRUD, retraining logs)
+TURSO_URL=https://your-database.turso.io
+TURSO_AUTH_TOKEN=your-turso-auth-token
 
 # Security
 ADMIN_API_KEY=your-secret-key-for-admin-endpoints
 CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
 
-> **Note**: The API runs fine *without* Supabase credentials — database features (customer CRUD, retraining log) are simply disabled. Models, scoring, and monitoring all work locally.
+> **Note**: The API runs fine *without* Turso credentials — database features (customer CRUD, retraining log) are simply disabled. Models, scoring, and monitoring all work locally.
 
 ### 3. Generate Data & Train Models
 ```bash
@@ -468,11 +469,12 @@ curl -X POST http://localhost:8000/api/v1/admin/model-versions/cold_start_model/
 The system automatically retrains models on the **1st of every month at 02:00 AM**:
 
 ```
-[1] Export Supabase → CSV
+[0] Aggregate raw_transactions → credit_behavior_monthly
+[1] Export Turso → CSV
 [2] Run feature engineering (snap pipeline)
 [3] Train cold start + full models (best of 3 algorithms)
 [4] Hot-reload into running API (zero downtime)
-[5] Log results to retraining_log table
+[5] Log results to retraining_log table in Turso
 ```
 
 Manual retraining: `POST /api/v1/admin/retrain` with API key.
@@ -492,11 +494,11 @@ pytest tests/ -v --tb=short
 |-----------|-------|----------|
 | `test_handler.py` | 25 | Tier routing, scoring, guardrails, credit limits |
 | `test_api.py` | 9 | HTTP 200/422/503 responses, input validation |
-| `test_database.py` | 16 | Mocked Supabase CRUD, seed, export |
+| `test_database.py` | 16 | Mocked Turso CRUD, seed, export |
 | `test_data_generation.py` | 16 | Schema validation, distribution checks |
 | `test_versioning.py` | 16 | Save, list, rollback, auto-pruning |
 
-> **Note**: `test_database.py` uses mocked Supabase — no real database needed to run tests.
+> **Note**: `test_database.py` uses mocked Turso calls — no real database needed to run tests.
 
 ---
 
@@ -509,49 +511,37 @@ pytest tests/ -v --tb=short
 
 ---
 
-## 🗄️ Supabase Setup (Optional)
+## 🗄️ Turso Setup
 
-Supabase is a free, hosted PostgreSQL database. The API works **without** Supabase (scoring, monitoring, and model versioning all work locally), but you'll need it for customer data storage and retraining logs.
+**Turso** is a free, edge-hosted libSQL (SQLite-compatible) database. No SDK required — uses plain HTTP REST. The API works **without** Turso credentials (scoring, monitoring, and model versioning all work locally), but you'll need it for customer data storage and retraining logs.
 
-### Step 1: Create a Supabase Project
+### Step 1: Create a Turso Account & Database
 
-1. Go to **[supabase.com](https://supabase.com)** and sign in (GitHub login works)
-2. Click **"New Project"**
-3. Choose a name (e.g., `baaki-credit-scoring`), set a database password, and select a region
-4. Wait ~2 minutes for the project to be provisioned
+1. Go to **[turso.tech](https://turso.tech)** and sign in (GitHub login works)
+2. Install the Turso CLI:
+   ```bash
+   # macOS / Linux
+   curl -sSfL https://get.tur.so/install.sh | bash
+   # Windows (PowerShell)
+   winget install Turso.turso
+   ```
+3. Log in and create a database:
+   ```bash
+   turso auth login
+   turso db create baaki-credit-scoring
+   ```
 
-### Step 2: Get Your Project URL and API Key
+### Step 2: Get Your URL and Auth Token
 
-1. Once your project is ready, go to **Project Settings** (⚙️ gear icon in the left sidebar)
-2. Click **"API"** under the **Configuration** section
-3. You'll see two values you need:
+```bash
+# Get the database URL
+turso db show baaki-credit-scoring --url
+# Example output: https://baaki-credit-scoring-yourname.turso.io
 
+# Generate an auth token
+turso db tokens create baaki-credit-scoring
+# Example output: eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  Project Settings → API                                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Project URL                                                    │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │ https://abcdefghijk.supabase.co                           │  │  ← Copy this as SUPABASE_URL
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                 │
-│  Project API Keys                                               │
-│                                                                 │
-│  anon / public                                                  │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOi...      │  │  ← Copy this as SUPABASE_KEY
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                 │
-│  service_role / secret  (⚠️ DO NOT use this one)                │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOi...      │  │  ← Ignore this
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-> ⚠️ **Use the `anon` key**, NOT the `service_role` key. The anon key is safe for client-side use.
 
 ### Step 3: Add Credentials to `.env`
 
@@ -561,8 +551,8 @@ cp .env.example .env
 
 Open `.env` and paste your values:
 ```env
-SUPABASE_URL=https://abcdefghijk.supabase.co
-SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOi...
+TURSO_URL=https://baaki-credit-scoring-yourname.turso.io
+TURSO_AUTH_TOKEN=eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...
 
 # Also set your admin API key (any strong random string)
 ADMIN_API_KEY=my-secret-admin-key-change-this
@@ -573,11 +563,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 
 ### Step 4: Create the Database Tables
 
-1. In your Supabase dashboard, click **"SQL Editor"** (left sidebar)
-2. Click **"New Query"**
-3. Copy-paste the contents of `docs/supabase_schema.sql` into the editor
-4. Click **"Run"** (or press `Ctrl+Enter`)
-5. You should see three tables created: `customers`, `credit_behavior_monthly`, `retraining_log`
+Run this once to create all required tables in Turso:
+
+```bash
+turso db shell baaki-credit-scoring < docs/turso_schema.sql
+```
+
+This creates four tables: `customers`, `credit_behavior_monthly`, `raw_transactions`, `retraining_log`.
 
 ### Step 5: Start the API
 
@@ -586,11 +578,11 @@ uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 On startup, the API will automatically:
-- ✅ Connect to Supabase
+- ✅ Connect to Turso and verify reachability
 - ✅ Seed existing CSV data into the database (if tables are empty)
 - ✅ Start the monthly retraining scheduler
 
-> **Troubleshooting**: If you see `⚠️ SUPABASE_URL / SUPABASE_KEY not set`, double-check your `.env` file is in the project root and contains the correct values.
+> **Troubleshooting**: If you see `⚠️ TURSO_URL / TURSO_AUTH_TOKEN not set`, double-check your `.env` file is in the project root and contains the correct values.
 
 ---
 

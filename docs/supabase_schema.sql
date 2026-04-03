@@ -7,10 +7,11 @@
 
 
 -- 1. CUSTOMERS
---    One row per customer. customer_id is the primary key.
+--    One row per customer. customer_id is auto-generated.
+--    The DB assigns 1, 2, 3… automatically on INSERT.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS customers (
-    customer_id        BIGINT      PRIMARY KEY,
+    customer_id        BIGINT      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     age                INTEGER     NOT NULL,
     employment_status  TEXT        NOT NULL,
     education_level    TEXT        NOT NULL,
@@ -23,6 +24,9 @@ CREATE TABLE IF NOT EXISTS customers (
     registered_at      TIMESTAMPTZ NOT NULL DEFAULT now(), -- used to compute age dynamically
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ⚠️ If the table already exists with BIGINT, run this to convert:
+-- ALTER TABLE customers ALTER COLUMN customer_id ADD GENERATED ALWAYS AS IDENTITY;
 
 -- If the table already exists, add the column with:
 -- ALTER TABLE customers ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ NOT NULL DEFAULT now();

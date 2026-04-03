@@ -1,6 +1,6 @@
 """
-Generate dummy raw transactions for all users in the Supabase customers table
-and upload them directly into the new raw_transactions table.
+Generate dummy raw transactions for all customers in the Turso database
+and upload them directly into the raw_transactions table.
 """
 import os
 import random
@@ -9,13 +9,14 @@ from datetime import datetime, timedelta, timezone
 from dateutil.relativedelta import relativedelta
 
 import pandas as pd
-from src.db.supabase import supabase
+from src.db.turso import _single_execute, _to_turso_arg, _execute
 
 def generate_transactions(num_months=12):
     # 1. Fetch all customers from the database
-    print("Fetching customers from Supabase...")
-    response = supabase.table("customers").select("customer_id, monthly_income, credit_limit").execute()
-    customers = response.data
+    print("Fetching customers from Turso...")
+    customers = _single_execute(
+        "SELECT customer_id, monthly_income, credit_limit FROM customers"
+    )
     
     if not customers:
         print("No customers found in database. Exiting.")
@@ -100,17 +101,25 @@ def generate_transactions(num_months=12):
                     })
                     outstanding += penalty
 
-    # 3. Batch insert into Supabase
-    batch_size = 1000
+    # 3. Batch insert into Turso
+    batch_size = 50
     inserted = 0
     print(f"Total transactions to insert: {len(all_transactions)}")
     for i in range(0, len(all_transactions), batch_size):
         batch = all_transactions[i:i+batch_size]
-        supabase.table("raw_transactions").insert(batch).execute()
+        cols = list(batch[0].keys())
+        placeholders = ", ".join(["?" for _ in cols])
+        safe_cols = ", ".join([f'"{c}"' for c in cols])
+        sql = f'INSERT INTO raw_transactions ({safe_cols}) VALUES ({placeholders})'
+        statements = [
+            {"sql": sql, "args": [_to_turso_arg(r[c]) for c in cols]}
+            for r in batch
+        ]
+        _execute(statements)
         inserted += len(batch)
-        print(f"  ➜ Inserted {inserted}/{len(all_transactions)} transactions...")
+        print(f"  -> Inserted {inserted}/{len(all_transactions)} transactions...")
 
-    print("✅ Dummy transaction generation complete!")
+    print("Dummy transaction generation complete!")
 
 if __name__ == "__main__":
     # Ensure dateutil is installed if ran standalone

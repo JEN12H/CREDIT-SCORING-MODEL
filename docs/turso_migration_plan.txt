@@ -1,0 +1,213 @@
+==============================================================
+  BAAKI CREDIT SCORING — SUPABASE TO TURSO MIGRATION PLAN
+==============================================================
+Date        : 2026-04-03
+Author      : BAAKI Dev Team
+Status      : READY TO IMPLEMENT
+
+--------------------------------------------------------------
+BACKGROUND
+--------------------------------------------------------------
+The frontend team (Ansh / baakioperations) uses Turso as their
+primary database. To align the backend with the frontend, we
+are migrating all 4 Supabase tables to Turso and rewriting the
+database layer to use Turso's HTTP API instead of the Supabase
+Python SDK.
+
+Data migration (Supabase → Turso) is already COMPLETE.
+Tables migrated:
+  - raw_transactions         (~10,000 rows)
+  - credit_behavior_monthly  (~10,000 rows)
+  - customers                (10,007 rows)
+  - retraining_log           (0 rows — was empty)
+
+Turso Database URL : https://baakioperations-ansh-chamriya.turso.io
+Credentials        : Stored in .env as TURSO_URL and TURSO_AUTH_TOKEN
+
+--------------------------------------------------------------
+PHASE 1 — DATABASE LAYER REWRITE
+--------------------------------------------------------------
+File : src/db/supabase.py  →  Rename/replace with  src/db/turso.py
+
+This is the ONLY file that needs a full rewrite. All 11 functions
+must be rewritten from Supabase SDK calls to raw SQL via
+Turso's HTTP API (requests library).
+
+FUNCTION-BY-FUNCTION CHANGES:
+-------------------------------
+
+1. ping()
+   BEFORE : supabase.table("customers").select("customer_id").limit(1).execute()
+   AFTER  : SELECT customer_id FROM customers LIMIT 1
+             (via Turso HTTP POST to /v2/pipeline)
+
+2. seed_from_csv(customers_path, behavior_path)
+   BEFORE : supabase.table("customers").upsert(batch, on_conflict="customer_id").execute()
+             supabase.table("credit_behavior_monthly").upsert(batch, ...).execute()
+   AFTER  : INSERT OR REPLACE INTO customers (...) VALUES (...)
+             INSERT OR REPLACE INTO credit_behavior_monthly (...) VALUES (...)
+   NOTE   : One-time setup script only. Not used in production flow.
+
+3. add_customer(data)
+   BEFORE : supabase.table("customers").insert(data).execute()
+             Auto-generated ID via PostgreSQL IDENTITY column
+   AFTER  : INSERT INTO customers (...) VALUES (...)
+             Retrieve new ID using last_insert_rowid() from Turso response
+   IMPORTANT: Return the new customer_id back to the caller (same behaviour).
+
+4. update_customer(customer_id, data)
+   BEFORE : supabase.table("customers").update(data).eq("customer_id", id).execute()
+   AFTER  : UPDATE customers SET col1=?, col2=? WHERE customer_id=?
+
+5. get_customer(customer_id)
+   BEFORE : supabase.table("customers").select("*").eq("customer_id", id).execute()
+   AFTER  : SELECT * FROM customers WHERE customer_id=?
+   NOTE   : Dynamic account_age_months computation stays unchanged (pure Python).
+
+6. get_customer_profile(customer_id)
+   BEFORE : Alias for get_customer() — no change in logic.
+   AFTER  : Same alias, just calls the new get_customer().
+
+7. add_behavior_record(data)
+   BEFORE : supabase.table("credit_behavior_monthly").insert(data).execute()
+             Duplicate check via separate .select().eq().eq().eq()
+   AFTER  : Duplicate check: SELECT id FROM credit_behavior_monthly
+                              WHERE customer_id=? AND month=? AND year=?
+             Insert        : INSERT INTO credit_behavior_monthly (...) VALUES (...)
+
+8. get_customer_history(customer_id)
+   BEFORE : supabase.table("credit_behavior_monthly").eq().order("year").order("month").execute()
+   AFTER  : SELECT * FROM credit_behavior_monthly
+             WHERE customer_id=? ORDER BY year ASC, month ASC
+
+9. get_raw_transaction_history(customer_id, months=6)
+   BEFORE : supabase.table("raw_transactions").eq().order("created_at", desc=True).execute()
+   AFTER  : SELECT * FROM raw_transactions
+             WHERE customer_id=? ORDER BY created_at DESC
+
+10. export_to_csv(customers_path, behavior_path)
+    BEFORE : supabase.table("customers").range(offset, offset+PAGE-1).execute()  [paginated loop]
+              supabase.table("credit_behavior_monthly").range(...).execute()       [paginated loop]
+    AFTER  : SELECT * FROM customers LIMIT 1000 OFFSET ?    [paginated loop]
+              SELECT * FROM credit_behavior_monthly ORDER BY customer_id, year, month
+              LIMIT 1000 OFFSET ?                           [paginated loop]
+    NOTE   : Same CSV output format — retraining pipeline unchanged.
+
+11. log_retraining(trigger, success, ...)
+    BEFORE : supabase.table("retraining_log").insert(payload).execute()
+    AFTER  : INSERT INTO retraining_log (trigger, success, cold_start_auc,
+              full_model_auc, n_customers, n_behavior_rows, notes, run_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+
+12. get_retraining_log(limit=20)
+    BEFORE : supabase.table("retraining_log").order("run_at", desc=True).limit(20).execute()
+    AFTER  : SELECT * FROM retraining_log ORDER BY run_at DESC LIMIT ?
+
+--------------------------------------------------------------
+PHASE 2 — UPDATE IMPORTS
+--------------------------------------------------------------
+File : src/db/__init__.py
+
+BEFORE :
+  from src.db.supabase import (
+      ping, seed_from_csv, add_customer, ...
+  )
+
+AFTER :
+  from src.db.turso import (
+      ping, seed_from_csv, add_customer, ...
+  )
+
+NOTE: No other files need import changes because everything
+      imports from src.db (not src.db.supabase directly),
+      EXCEPT src/scheduler/retraining.py (see Phase 3).
+
+--------------------------------------------------------------
+PHASE 3 — UPDATE SCHEDULER IMPORT
+--------------------------------------------------------------
+File : src/scheduler/retraining.py  (Line 35)
+
+BEFORE : from src.db.supabase import export_to_csv, log_retraining
+AFTER  : from src.db.turso import export_to_csv, log_retraining
+
+--------------------------------------------------------------
+PHASE 4 — ENVIRONMENT VARIABLES
+--------------------------------------------------------------
+File : .env
+
+REMOVE (optional, can keep for reference):
+  SUPABASE_URL=...
+  SUPABASE_KEY=...
+
+ALREADY ADDED (confirmed present):
+  TURSO_URL=https://baakioperations-ansh-chamriya.turso.io
+  TURSO_AUTH_TOKEN=eyJhbGci...
+
+--------------------------------------------------------------
+PHASE 5 — DEPENDENCIES
+--------------------------------------------------------------
+File : requirements.txt
+
+REMOVE : supabase
+KEEP   : requests       (used for Turso HTTP calls)
+KEEP   : python-dotenv  (unchanged)
+
+--------------------------------------------------------------
+PHASE 6 — AUTOINCREMENT ID HANDLING
+--------------------------------------------------------------
+Context: Supabase uses PostgreSQL's IDENTITY column to auto-assign
+customer_id and returns it in the INSERT response.
+Turso (SQLite) uses INTEGER PRIMARY KEY AUTOINCREMENT.
+
+Change in add_customer():
+  - Insert the row WITHOUT providing customer_id
+  - Turso's response includes last_insert_rowid in the result
+  - Read that value and return it as the new customer_id
+
+This keeps the API response identical to the current behaviour.
+
+--------------------------------------------------------------
+FILES THAT DO NOT NEED ANY CHANGES
+--------------------------------------------------------------
+  - src/api/app.py               (no direct DB calls)
+  - src/api/routes/*.py          (calls src/db functions — unchanged)
+  - src/core/scoring.py          (pure ML logic — no DB)
+  - src/core/monitoring.py       (no DB calls)
+  - src/data/*.py                (data generation — no DB)
+  - All model .pkl files         (ML artifacts — unchanged)
+  - All tests (mostly)           (mock the DB layer)
+  - GitHub Actions workflow      (no DB-specific steps)
+
+--------------------------------------------------------------
+ESTIMATED EFFORT
+--------------------------------------------------------------
+  Phase 1 (turso.py rewrite)   : ~1-2 hours
+  Phase 2 (db/__init__.py)     : 5 minutes
+  Phase 3 (retraining.py)      : 2 minutes
+  Phase 4 (.env)               : Already done
+  Phase 5 (requirements.txt)   : 2 minutes
+  Phase 6 (ID handling)        : included in Phase 1
+
+  TOTAL                        : ~2 hours
+
+--------------------------------------------------------------
+TESTING AFTER MIGRATION
+--------------------------------------------------------------
+Run these checks after implementing all phases:
+
+1. python -c "from src.db.turso import ping; print(ping())"
+   Expected: True
+
+2. python scripts/demo_auto_id.py
+   Expected: Customer created with auto-generated ID from Turso
+
+3. Hit the /score endpoint via FastAPI with a valid customer_id
+   Expected: Credit score returned correctly
+
+4. Run the existing test suite:
+   pytest tests/ -v
+   Expected: All tests pass (DB layer is mocked in most tests)
+
+==============================================================
+END OF MIGRATION PLAN
+==============================================================

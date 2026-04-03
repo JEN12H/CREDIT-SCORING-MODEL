@@ -121,25 +121,31 @@ def add_customer(data: dict) -> dict:
     """
     Insert a new customer profile.
     Auto-stamps registered_at = now() if not provided.
+    If customer_id is None / missing, the DB auto-generates it (IDENTITY column).
     Raises ValueError if customer_id already exists.
     """
-    # Check if already exists
-    existing = (
-        supabase.table("customers")
-        .select("customer_id")
-        .eq("customer_id", data["customer_id"])
-        .execute()
-    )
-    if existing.data:
-        raise ValueError(f"Customer {data['customer_id']} already exists.")
+    # If a customer_id was explicitly provided, check for duplicates
+    if data.get("customer_id") is not None:
+        existing = (
+            supabase.table("customers")
+            .select("customer_id")
+            .eq("customer_id", data["customer_id"])
+            .execute()
+        )
+        if existing.data:
+            raise ValueError(f"Customer {data['customer_id']} already exists.")
+    else:
+        # Remove the key entirely so the DB IDENTITY column auto-generates it
+        data.pop("customer_id", None)
 
     # Auto-stamp registration timestamp if not provided by caller
     if not data.get("registered_at"):
         data["registered_at"] = datetime.now(timezone.utc).isoformat()
 
     result = supabase.table("customers").insert(data).execute()
-    logger.info(f"Added customer {data['customer_id']} (registered_at={data['registered_at']})")
-    return result.data[0] if result.data else {}
+    new_record = result.data[0] if result.data else {}
+    logger.info(f"Added customer {new_record.get('customer_id')} (registered_at={data['registered_at']})")
+    return new_record
 
 
 def update_customer(customer_id: int, data: dict) -> dict:

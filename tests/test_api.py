@@ -19,8 +19,8 @@ if PROJECT_ROOT not in sys.path:
 def client():
     """Create a TestClient with mocked dependencies."""
     # Mock the DB and scheduler imports before importing app
-    with patch("src.db.supabase.ping", return_value=False), \
-         patch("src.db.supabase.seed_from_csv", return_value={}), \
+    with patch("src.db.turso.ping", return_value=False), \
+         patch("src.db.turso.seed_from_csv", return_value={}), \
          patch("src.scheduler.retraining.start_scheduler"), \
          patch("src.scheduler.retraining.stop_scheduler"), \
          patch("src.core.handler.ColdStartHandler.__init__", side_effect=FileNotFoundError("mock")):

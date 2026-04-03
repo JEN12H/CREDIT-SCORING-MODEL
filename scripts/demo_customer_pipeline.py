@@ -6,7 +6,7 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from fastapi.testclient import TestClient
 from src.api.app import app
-from src.db.supabase import supabase
+from src.db.turso import add_raw_transaction, _single_execute
 from src.data.aggregate_transactions import aggregate_raw_to_monthly
 
 def run_demo():
@@ -17,9 +17,9 @@ def run_demo():
         
         # 0. Clean up any previous test runs for this ID
         print(f"🧹 Cleaning up any old data for Customer ID: {customer_id}...")
-        supabase.table("raw_transactions").delete().eq("customer_id", customer_id).execute()
-        supabase.table("credit_behavior_monthly").delete().eq("customer_id", customer_id).execute()
-        supabase.table("customers").delete().eq("customer_id", customer_id).execute()
+        _single_execute("DELETE FROM raw_transactions WHERE customer_id = ?", [customer_id])
+        _single_execute("DELETE FROM credit_behavior_monthly WHERE customer_id = ?", [customer_id])
+        _single_execute("DELETE FROM customers WHERE customer_id = ?", [customer_id])
         
         # 1. Create Customer via API
         print(f"\n👤 PHASE 1: Frontend User Onboarding")
@@ -39,7 +39,7 @@ def run_demo():
             print(f"❌ Failed to create customer: {response.text}")
             return
             
-        print(f"✅ Customer Profile Created in Supabase")
+        print(f"✅ Customer Profile Created in Turso")
         print(f"✅ Auto-Assigned Credit Limit: ₹{response.json().get('credit_limit_assigned')}\n")
         
         # 2. Add Raw Transactions — multiple small transactions per month (real-world scenario!)
@@ -71,7 +71,8 @@ def run_demo():
             {"customer_id": customer_id, "amount": 800.0,  "transaction_type": "Repayment", "created_at": "2026-04-25T10:00:00Z"},  # repayment
         ]
         
-        supabase.table("raw_transactions").insert(txns).execute()
+        for txn in txns:
+            add_raw_transaction(txn)
         print(f"   ✅ {len(txns)} individual raw transactions logged across 4 months!")
         print("   📅 Jan: 4 purchases + 1 repayment")
         print("   📅 Feb: 3 purchases + 1 partial repayment")
@@ -83,17 +84,20 @@ def run_demo():
         aggregate_raw_to_monthly()
         
         # Fetch and show what the aggregated data looks like for this customer
-        agg = supabase.table("credit_behavior_monthly").select(
-            "month,year,num_transactions,avg_transaction_amount,outstanding_balance,credit_utilization,payment_ratio,missed_due_flag"
-        ).eq("customer_id", customer_id).order("year").order("month").execute()
-        
+        agg = _single_execute(
+            "SELECT month, year, num_transactions, avg_transaction_amount, outstanding_balance, "
+            "credit_utilization, payment_ratio, missed_due_flag "
+            "FROM credit_behavior_monthly WHERE customer_id = ? ORDER BY year, month",
+            [customer_id]
+        )
+
         print("\n   📊 Aggregated Monthly Data (what the ML model actually sees):")
         print(f"   {'Month':<10} {'# Txns':<10} {'Avg Amt':>10} {'Outstanding':>14} {'Utilization':>14} {'Pay Ratio':>11} {'Missed Due':>12}")
         print("   " + "-"*76)
-        for row in agg.data:
+        for row in agg:
             month_name = ["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][row['month']]
             print(f"   {month_name+' '+str(row['year']):<10} {row['num_transactions']:<10} {row['avg_transaction_amount']:>10.2f} {row['outstanding_balance']:>14.2f} {row['credit_utilization']:>14.4f} {row['payment_ratio']:>11.4f} {row['missed_due_flag']:>12}")
-        print(f"\n   ✅ {len(txns)} raw transactions → {len(agg.data)} aggregated monthly rows!\n")
+        print(f"\n   ✅ {len(txns)} raw transactions → {len(agg)} aggregated monthly rows!\n")
         
         # 4. Get Score
         print("🎯 PHASE 4: Frontend Requests Real-Time Credit Score")

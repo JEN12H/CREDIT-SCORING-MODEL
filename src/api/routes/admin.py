@@ -7,7 +7,7 @@ import os
 import sys
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from src.db.supabase import get_retraining_log
+from src.db.turso import get_retraining_log
 from src.scheduler.retraining import run_retraining_job
 from src.core.versioning import list_model_versions, rollback_model, get_current_version
 from src.core.monitoring import prediction_tracker
@@ -30,7 +30,7 @@ def set_handler(handler):
 def trigger_retraining():
     """
     Manually trigger a full model retraining cycle.
-    Steps: Supabase export → snap pipeline → retrain both models → hot-reload.
+    Steps: Turso export → snap pipeline → retrain both models → hot-reload.
     This normally runs automatically on the 1st of every month at 02:00 AM.
     """
     result = run_retraining_job(trigger="manual", handler=_handler)
@@ -44,7 +44,7 @@ def trigger_retraining():
 @router.get("/retraining-log")
 def retraining_log(limit: int = 20):
     """
-    View the history of model retraining runs (stored in Supabase).
+    View the history of model retraining runs (stored in Turso).
     """
     try:
         log = get_retraining_log(limit=limit)

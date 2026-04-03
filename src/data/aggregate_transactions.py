@@ -5,20 +5,21 @@ import os
 import pandas as pd
 from datetime import datetime
 
-from src.db.supabase import supabase
+from src.db.turso import _single_execute, _to_turso_arg, _execute
 
 def aggregate_raw_to_monthly(output_path="data/credit_behavior_monthly.csv"):
-    print("Fetching raw_transactions from Supabase...")
-    
-    # Supabase REST limits to 1000 rows. Let's do pagination.
+    print("Fetching raw_transactions from Turso...")
+
     PAGE = 1000
     all_txns = []
     offset = 0
     while True:
-        chunk = supabase.table("raw_transactions").select("*").range(offset, offset + PAGE - 1).execute()
-        data = chunk.data or []
-        all_txns.extend(data)
-        if len(data) < PAGE:
+        chunk = _single_execute(
+            "SELECT * FROM raw_transactions LIMIT ? OFFSET ?",
+            [PAGE, offset]
+        )
+        all_txns.extend(chunk)
+        if len(chunk) < PAGE:
             break
         offset += PAGE
         print(f"  Fetched {offset} rows so far...")
@@ -29,9 +30,9 @@ def aggregate_raw_to_monthly(output_path="data/credit_behavior_monthly.csv"):
         
     print(f"Total raw transactions retrieved: {len(all_txns)}")
     
-    # Fetch customers limits for accurate utilization math
+    # Fetch customer credit limits for accurate utilization math
     print("Fetching customer profiles for accurate limit generation...")
-    all_custs = supabase.table("customers").select("customer_id, credit_limit").execute().data or []
+    all_custs = _single_execute("SELECT customer_id, credit_limit FROM customers")
     limits = {c["customer_id"]: (c["credit_limit"] or 100000) for c in all_custs}
 
     print("Aggregating into monthly trends...")
@@ -94,19 +95,27 @@ def aggregate_raw_to_monthly(output_path="data/credit_behavior_monthly.csv"):
     out_df.to_csv(output_path, index=False)
     print(f"✅ Generated {len(out_df)} monthly behavior records and saved to {output_path}")
 
-    # Step: Upsert back to credit_behavior_monthly table so the API can use it
-    print("Upserting aggregated behaviors back into Supabase for real-time inference routing...")
+    # Upsert back to credit_behavior_monthly so the API can use it for inference routing
+    print("Upserting aggregated behaviors into Turso for real-time inference routing...")
     upsert_records = out_df.to_dict(orient="records")
-    batch_size = 500
+    batch_size = 50
     for i in range(0, len(upsert_records), batch_size):
         batch = upsert_records[i:i+batch_size]
+        cols = list(batch[0].keys())
+        placeholders = ", ".join(["?" for _ in cols])
+        safe_cols = ", ".join([f'"{c}"' for c in cols])
+        sql = f'INSERT OR REPLACE INTO credit_behavior_monthly ({safe_cols}) VALUES ({placeholders})'
+        statements = [
+            {"sql": sql, "args": [_to_turso_arg(r[c]) for c in cols]}
+            for r in batch
+        ]
         try:
-            supabase.table("credit_behavior_monthly").upsert(batch, on_conflict="customer_id,month,year").execute()
-            print(f"  ➜ Upserted {i+len(batch)}/{len(upsert_records)} records...")
+            _execute(statements)
+            print(f"  -> Upserted {i+len(batch)}/{len(upsert_records)} records...")
         except Exception as e:
             print(f"Upsert warning: {e}")
 
-    print("✅ Complete!")
+    print("Complete!")
     
 if __name__ == "__main__":
     aggregate_raw_to_monthly()

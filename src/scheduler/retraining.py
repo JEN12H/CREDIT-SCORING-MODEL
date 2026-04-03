@@ -27,12 +27,12 @@ def run_retraining_job(trigger: str = "scheduled", handler=None) -> dict:
     Full retraining pipeline. Called by the scheduler OR the /admin/retrain endpoint.
     Steps:
       0. Aggregate raw_transactions → credit_behavior_monthly
-      1. Export Supabase → CSV
+      1. Export Turso → CSV
       2. Feature engineering (snap pipeline)
       3. Train both models
       4. Hot-reload into live API
     """
-    from src.db.supabase import export_to_csv, log_retraining
+    from src.db.turso import export_to_csv, log_retraining
     from src.data.feature_pipeline import run_snap_pipeline
     from src.training.train import run_training
 
@@ -46,8 +46,8 @@ def run_retraining_job(trigger: str = "scheduled", handler=None) -> dict:
         aggregate_raw_to_monthly()
         logger.info("✅ Raw transaction aggregation complete")
 
-        # Step 1 — Export Supabase → CSV
-        logger.info("Exporting data from Supabase...")
+        # Step 1 — Export Turso → CSV
+        logger.info("Exporting data from Turso...")
         export_stats = export_to_csv(CUSTOMERS_PATH, BEHAVIOR_PATH)
         n_customers     = export_stats["n_customers"]
         n_behavior_rows = export_stats["n_behavior_rows"]
@@ -82,7 +82,7 @@ def run_retraining_job(trigger: str = "scheduled", handler=None) -> dict:
         result["success"] = True
         result["message"] = "Retraining completed successfully"
 
-        # Log to Supabase
+        # Log to Turso
         log_retraining(
             trigger=trigger, success=True,
             cold_start_auc=result["cold_start_auc"],
@@ -90,7 +90,7 @@ def run_retraining_job(trigger: str = "scheduled", handler=None) -> dict:
             n_customers=n_customers,
             n_behavior_rows=n_behavior_rows,
         )
-        logger.info(f"Retraining [{trigger}] complete — results logged to Supabase")
+        logger.info(f"Retraining [{trigger}] complete — results logged to Turso")
 
     except Exception as e:
         err_msg = traceback.format_exc()
