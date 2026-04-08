@@ -1,7 +1,7 @@
 {
   "models": {
     "cold_start_model": {
-      "current_version": "20260316_175403",
+      "current_version": "20260408_131333",
       "versions": [
         {
           "version": "20260316_175403",
@@ -9,11 +9,25 @@
           "saved_at": "2026-03-16T17:54:04.114528",
           "auc": 0.581023935848834,
           "algorithm": "Random Forest"
+        },
+        {
+          "version": "20260408_131005",
+          "filename": "cold_start_model_20260408_131005.pkl",
+          "saved_at": "2026-04-08T13:10:05.847974",
+          "auc": 0.5403689284390063,
+          "algorithm": "Random Forest"
+        },
+        {
+          "version": "20260408_131333",
+          "filename": "cold_start_model_20260408_131333.pkl",
+          "saved_at": "2026-04-08T13:13:34.041096",
+          "auc": 0.5403689284390063,
+          "algorithm": "Random Forest"
         }
       ]
     },
     "credit_score_model": {
-      "current_version": "20260316_175404",
+      "current_version": "20260408_131334",
       "versions": [
         {
           "version": "20260316_175404",
@@ -21,6 +35,20 @@
           "saved_at": "2026-03-16T17:54:04.145306",
           "auc": 0.7846166329728106,
           "algorithm": "Gradient Boosting"
+        },
+        {
+          "version": "20260408_131005",
+          "filename": "credit_score_model_20260408_131005.pkl",
+          "saved_at": "2026-04-08T13:10:05.911280",
+          "auc": 0.9750417130144606,
+          "algorithm": "Random Forest"
+        },
+        {
+          "version": "20260408_131334",
+          "filename": "credit_score_model_20260408_131334.pkl",
+          "saved_at": "2026-04-08T13:13:34.101715",
+          "auc": 0.9749953652206155,
+          "algorithm": "Random Forest"
         }
       ]
     }

@@ -128,13 +128,15 @@ async def startup_event():
 
     # Seed Turso from existing CSVs (only if tables are empty)
     try:
-        if ping():
-            customers_csv = os.path.join(PROJECT_ROOT, "data", "customers.csv")
-            behavior_csv  = os.path.join(PROJECT_ROOT, "data", "credit_behavior_monthly.csv")
-            result = seed_from_csv(customers_csv, behavior_csv)
-            logger.info(f"✅ Turso seeded: {result}")
-        else:
-            logger.warning("Turso unreachable at startup — skipping seed (check .env credentials)")
+        # TEMP: Skipping seed at startup to avoid slow boot times.
+        # if ping():
+        #     customers_csv = os.path.join(PROJECT_ROOT, "data", "customers.csv")
+        #     behavior_csv  = os.path.join(PROJECT_ROOT, "data", "credit_behavior_monthly.csv")
+        #     result = seed_from_csv(customers_csv, behavior_csv)
+        #     logger.info(f"✅ Turso seeded: {result}")
+        # else:
+        #     logger.warning("Turso unreachable at startup — skipping seed (check .env credentials)")
+        pass
     except Exception as e:
         logger.warning(f"Turso seed skipped: {e}")
 
