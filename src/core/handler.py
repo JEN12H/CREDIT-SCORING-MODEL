@@ -33,24 +33,43 @@ class ColdStartHandler:
 
     #Model loading
     def _load_model(self, name: str, path: str) -> None:
+        import os
         try:
-            model = joblib.load(path)
+            hf_repo_id = os.getenv("HF_REPO_ID")
+            if hf_repo_id:
+                from huggingface_hub import hf_hub_download
+                filename = os.path.basename(path)
+                real_path = hf_hub_download(repo_id=hf_repo_id, filename=filename, token=os.getenv("HF_TOKEN"))
+                logger.info(f"Downloaded {filename} from Hugging Face into {real_path}")
+            else:
+                real_path = path
+
+            model = joblib.load(real_path)
             if name == "cold_start":
                 self.cold_start_model  = model
                 self.cold_start_loaded = True
             else:
                 self.full_model= model
                 self.full_model_loaded = True
-            logger.info(f"  Loaded {name} model: {path}")
+            logger.info(f"  Loaded {name} model: {real_path}")
         except FileNotFoundError:
             logger.error(f" Model not found: {path}  — run training first.")
         except Exception as e:
             logger.error(f" Failed to load {name} model ({path}): {e}")
 
     def _load_feature_config(self, path: str) -> None:
+        import os
         try:
-            self.feature_config = joblib.load(path)
-            logger.info(f"Loaded feature config: {path}")
+            hf_repo_id = os.getenv("HF_REPO_ID")
+            if hf_repo_id:
+                from huggingface_hub import hf_hub_download
+                filename = os.path.basename(path)
+                real_path = hf_hub_download(repo_id=hf_repo_id, filename=filename, token=os.getenv("HF_TOKEN"))
+            else:
+                real_path = path
+
+            self.feature_config = joblib.load(real_path)
+            logger.info(f"Loaded feature config: {real_path}")
         except FileNotFoundError:
             logger.warning(f"feature_config.pkl not found at {path}, using defaults")
             self.feature_config = {

@@ -9,6 +9,8 @@ import os
 import sys
 import warnings
 from datetime import datetime
+from dotenv import load_dotenv
+load_dotenv()
 import joblib
 import matplotlib.pyplot as plt
 import mlflow
@@ -329,6 +331,46 @@ def run_training(customers_path: str = None,behavior_path: str = None) -> dict:
         mlflow.log_artifact(roc_path)
 
         logger.info("TRAINING COMPLETE — all artifacts logged to MLflow.")
+
+        # --- Hugging Face Model Registry Upload ---
+        try:
+            hf_repo_id = os.getenv("HF_REPO_ID")
+            hf_token = os.getenv("HF_TOKEN")
+
+            if hf_repo_id:
+                logger.info(f"Uploading models and artifacts to Hugging Face Hub ({hf_repo_id})...")
+                from huggingface_hub import HfApi, create_repo
+                api = HfApi(token=hf_token)
+
+                # Ensure repo exists (will create private repo if it doesn't)
+                try:
+                    create_repo(repo_id=hf_repo_id, token=hf_token, exist_ok=True, repo_type="model", private=True)
+                except Exception as e:
+                    logger.warning(f"Note: Repo creation skipped/failed (it might already exist). Proceeding to upload.")
+
+                # Construct versioned file paths
+                cs_path_versioned = os.path.join(models_dir, f"cold_start_model_{cs_version}.pkl")
+                full_path_versioned = os.path.join(models_dir, f"credit_score_model_{full_version}.pkl")
+
+                # Upload main files AND explicitly timestamped versions
+                files_to_upload = [
+                    cs_path, full_path, cfg_path, roc_path,
+                    cs_path_versioned, full_path_versioned
+                ]
+                for fpath in files_to_upload:
+                    if os.path.exists(fpath):
+                        api.upload_file(
+                            path_or_fileobj=fpath,
+                            path_in_repo=os.path.basename(fpath),
+                            repo_id=hf_repo_id,
+                            repo_type="model",
+                            commit_message=f"Automated retraining update: {timestamp} (CS AUC: {cs_best_auc:.4f}, Full AUC: {full_best_auc:.4f})"
+                        )
+                logger.info("✅ Successfully pushed models and artifacts to Hugging Face Model Registry.")
+            else:
+                logger.info("HF_REPO_ID not set. Skipping Hugging Face upload.")
+        except Exception as e:
+            logger.error(f"Failed to push to Hugging Face: {e}")
 
     return {
         "cold_start_auc":  round(cs_best_auc,  4),
