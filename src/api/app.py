@@ -107,17 +107,47 @@ async def track_metrics(request: Request, call_next):
 #  Initialize handler, DB, and scheduler at startup 
 handler: Optional[ColdStartHandler] = None
 
+def _resolve_model_path(models_dir: str, base_name: str) -> str:
+    """
+    Resolve the path to the latest versioned model file.
+    Reads `model_manifest.json` for the current_version and builds the
+    versioned filename (e.g. cold_start_model_20260411_111055.pkl).
+    Falls back to the canonical <base_name>.pkl if no versioned file is found.
+    """
+    version = get_current_version(base_name, models_dir)
+    if version:
+        versioned_filename = f"{base_name}_{version}.pkl"
+        versioned_path = os.path.join(models_dir, versioned_filename)
+        if os.path.exists(versioned_path):
+            logger.info(f"🔍 Resolved '{base_name}' → {versioned_filename}")
+            return versioned_path
+        logger.warning(
+            f"⚠️  Versioned file '{versioned_filename}' not found on disk; "
+            f"falling back to {base_name}.pkl"
+        )
+    else:
+        logger.info(f"ℹ️  No version entry in manifest for '{base_name}'; using {base_name}.pkl")
+    return os.path.join(models_dir, f"{base_name}.pkl")
+
 @app.on_event("startup")
 async def startup_event():
     global handler
     models_dir = os.path.join(PROJECT_ROOT, "models")
     try:
+        cold_start_path  = _resolve_model_path(models_dir, "cold_start_model")
+        full_model_path  = _resolve_model_path(models_dir, "credit_score_model")
+        feature_cfg_path = os.path.join(models_dir, "feature_config.pkl")
+
         handler = ColdStartHandler(
-            cold_start_model_path=os.path.join(models_dir, "cold_start_model.pkl"),
-            full_model_path=os.path.join(models_dir, "credit_score_model.pkl"),
-            feature_config_path=os.path.join(models_dir, "feature_config.pkl"),
+            cold_start_model_path=cold_start_path,
+            full_model_path=full_model_path,
+            feature_config_path=feature_cfg_path,
         )
-        logger.info("✅ ColdStartHandler initialized successfully")
+        logger.info(
+            f"✅ ColdStartHandler initialized — "
+            f"cold_start={os.path.basename(cold_start_path)}, "
+            f"full_model={os.path.basename(full_model_path)}"
+        )
     except Exception as e:
         logger.error(f"❌ Failed to initialize handler: {e}")
         handler = None

@@ -124,7 +124,12 @@ class ColdStartHandler:
             assigned_limit = min(assigned_limit, senior_cap)
             risk_warnings.append("Senior borrower — limit adjusted to 25% of income")
 
-        return adjusted_score, int(assigned_limit), self._score_to_decision(adjusted_score), risk_warnings
+        decision = self._score_to_decision(adjusted_score)
+        if decision == "Reject":
+            assigned_limit = 0
+            risk_warnings.append("Application rejected — credit limit set to ₹0")
+
+        return adjusted_score, int(assigned_limit), decision, risk_warnings
 
     # Hot-reload models
     def reload_models(self,cold_start_model_path: str = "models/cold_start_model.pkl",full_model_path: str = "models/credit_score_model.pkl",feature_config_path: str = "models/feature_config.pkl") -> None:
@@ -278,7 +283,17 @@ class ColdStartHandler:
             credit_limit = int(
                 customer.get("credit_limit") or self._estimate_provisional_limit(income, employment)
             )
-            max_limit = int(min(credit_limit * 0.5, self.MAX_LIMIT_TIER_2))
+            
+            # Graduated limit multipliers for Blended Tier (aligned with 6-band decision)
+            if   blended_score >= 800: limit_mult = 1.00
+            elif blended_score >= 750: limit_mult = 0.85
+            elif blended_score >= 700: limit_mult = 0.65
+            elif blended_score >= 650: limit_mult = 0.45
+            elif blended_score >= 600: limit_mult = 0.20
+            elif blended_score >= 550: limit_mult = 0.10
+            else:                      limit_mult = 0.00
+            
+            max_limit = int(min(credit_limit * 0.5 * limit_mult, self.MAX_LIMIT_TIER_2))
 
             result.update({
                 "ml_probability":   blended_prob,

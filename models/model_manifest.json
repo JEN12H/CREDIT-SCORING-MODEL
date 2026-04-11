@@ -1,7 +1,7 @@
 {
   "models": {
     "cold_start_model": {
-      "current_version": "20260408_131333",
+      "current_version": "20260411_111055",
       "versions": [
         {
           "version": "20260316_175403",
@@ -23,11 +23,18 @@
           "saved_at": "2026-04-08T13:13:34.041096",
           "auc": 0.5403689284390063,
           "algorithm": "Random Forest"
+        },
+        {
+          "version": "20260411_111055",
+          "filename": "cold_start_model_20260411_111055.pkl",
+          "saved_at": "2026-04-11T11:10:55.743995",
+          "auc": 0.5403689284390063,
+          "algorithm": "Random Forest"
         }
       ]
     },
     "credit_score_model": {
-      "current_version": "20260408_131334",
+      "current_version": "20260411_111055",
       "versions": [
         {
           "version": "20260316_175404",
@@ -48,6 +55,13 @@
           "filename": "credit_score_model_20260408_131334.pkl",
           "saved_at": "2026-04-08T13:13:34.101715",
           "auc": 0.9749953652206155,
+          "algorithm": "Random Forest"
+        },
+        {
+          "version": "20260411_111055",
+          "filename": "credit_score_model_20260411_111055.pkl",
+          "saved_at": "2026-04-11T11:10:55.802573",
+          "auc": 0.9750417130144606,
           "algorithm": "Random Forest"
         }
       ]
