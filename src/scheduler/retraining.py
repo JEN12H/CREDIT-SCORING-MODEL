@@ -7,8 +7,15 @@ import os
 import sys
 import traceback
 from datetime import datetime
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
+
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from apscheduler.triggers.cron import CronTrigger
+    APSCHEDULER_AVAILABLE = True
+except ImportError:
+    BackgroundScheduler = None  # type: ignore[assignment]
+    CronTrigger = None  # type: ignore[assignment]
+    APSCHEDULER_AVAILABLE = False
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
@@ -32,14 +39,17 @@ def run_retraining_job(trigger: str = "scheduled", handler=None) -> dict:
       3. Train both models
       4. Hot-reload into live API
     """
-    from src.db.turso import export_to_csv, log_retraining
-    from src.data.feature_pipeline import run_snap_pipeline
-    from src.training.train import run_training
-
     logger.info(f"Retraining triggered [{trigger}] at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     result = {"success": False, "cold_start_auc": None, "full_model_auc": None, "message": ""}
+    log_retraining = None
 
     try:
+        from src.db.turso import export_to_csv, log_retraining as _log_retraining
+        from src.data.feature_pipeline import run_snap_pipeline
+        from src.training.train import run_training
+
+        log_retraining = _log_retraining
+
         # Step 0 — Aggregate raw_transactions → credit_behavior_monthly
         logger.info("Step 0: Aggregating raw_transactions into monthly behavior records...")
         from src.data.aggregate_transactions import aggregate_raw_to_monthly
@@ -97,22 +107,27 @@ def run_retraining_job(trigger: str = "scheduled", handler=None) -> dict:
         logger.error(f"Retraining failed: {e}\n{err_msg}")
         result["message"] = str(e)
 
-        try:
-            log_retraining(trigger=trigger, success=False, notes=str(e))
-        except Exception:
-            logger.error("Also failed to write failure to retraining_log")
+        if callable(log_retraining):
+            try:
+                log_retraining(trigger=trigger, success=False, notes=str(e))
+            except Exception:
+                logger.error("Also failed to write failure to retraining_log")
 
     return result
 
 # SCHEDULER SETUP
 
-_scheduler: BackgroundScheduler = None
+_scheduler = None
 
-def start_scheduler(handler=None) -> BackgroundScheduler:
+def start_scheduler(handler=None):
     """
     Schedule: 1st of every month at 02:00 AM (server local time)
     """
     global _scheduler
+
+    if not APSCHEDULER_AVAILABLE:
+        logger.info("APScheduler not installed in this runtime; monthly auto-retraining is disabled")
+        return None
 
     if _scheduler and _scheduler.running:
         logger.info("Scheduler already running — skipping start")

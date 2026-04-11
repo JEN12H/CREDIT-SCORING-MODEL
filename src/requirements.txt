@@ -1,16 +1,13 @@
+# Runtime dependencies for serverless API deployment (Vercel).
+# Keep training-only packages in the root requirements.txt.
 fastapi
-uvicorn
 pydantic
 slowapi
 pandas
 numpy
 scikit-learn
 joblib
-matplotlib
-mlflow
 requests
 python-dotenv
 python-dateutil
-apscheduler
-pyyaml
 huggingface-hub

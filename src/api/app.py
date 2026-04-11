@@ -12,7 +12,6 @@ import os
 import sys
 import time
 from typing import Optional
-import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -172,8 +171,11 @@ async def startup_event():
 
     # Start monthly retraining scheduler
     try:
-        start_scheduler(handler=handler)
-        logger.info("✅ APScheduler started (monthly retraining on 1st of every month at 02:00)")
+        scheduler = start_scheduler(handler=handler)
+        if scheduler:
+            logger.info("✅ APScheduler started (monthly retraining on 1st of every month at 02:00)")
+        else:
+            logger.info("ℹ️  Monthly scheduler disabled in this runtime")
     except Exception as e:
         logger.warning(f"Scheduler startup skipped: {e}")
 

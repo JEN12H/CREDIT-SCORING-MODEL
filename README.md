@@ -37,6 +37,12 @@ make test       # Run all unit tests
 make docker     # Build & run with Docker
 ```
 
+## ☁️ Vercel Deployment Note
+
+- `requirements.txt` (project root) is the full local/dev stack, including training tools.
+- `src/requirements.txt` is the lean runtime stack used by the deployed serverless API.
+- Keep heavy training-only packages (for example `mlflow`, `matplotlib`) out of `src/requirements.txt` to stay within Vercel Lambda size limits.
+
 ---
 
 ## 📖 Project Overview
