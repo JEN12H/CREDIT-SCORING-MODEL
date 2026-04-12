@@ -7,6 +7,7 @@ numpy
 scikit-learn
 joblib
 matplotlib
+seaborn
 mlflow
 requests
 python-dotenv
