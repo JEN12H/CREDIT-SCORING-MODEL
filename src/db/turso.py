@@ -124,7 +124,7 @@ def _to_turso_arg(val) -> dict:
     if isinstance(val, int):
         return {"type": "integer", "value": str(val)}
     if isinstance(val, float):
-        return {"type": "float", "value": str(val)}
+        return {"type": "float", "value": val}
     if isinstance(val, (dict, list)):
         return {"type": "text", "value": json.dumps(val)}
     return {"type": "text", "value": str(val)}
@@ -361,6 +361,25 @@ def add_raw_transaction(data: dict) -> dict:
         data.get("customer_id"), data.get("transaction_type"), data.get("amount")
     )
     return data
+
+
+def migrate_add_store_id() -> dict:
+    """
+    One-time migration: add store_id column to raw_transactions table.
+    Safe to run multiple times — silently skips if column already exists.
+    Returns {"status": "added"} or {"status": "already_exists"}.
+    """
+    try:
+        _single_execute(
+            "ALTER TABLE raw_transactions ADD COLUMN store_id TEXT DEFAULT NULL"
+        )
+        logger.info("Migration successful: store_id column added to raw_transactions.")
+        return {"status": "added"}
+    except RuntimeError as e:
+        if "duplicate column" in str(e).lower():
+            logger.info("Migration skipped: store_id column already exists.")
+            return {"status": "already_exists"}
+        raise
 
 
 # ── Export — Turso → CSV (used by monthly retraining job) ─────────────

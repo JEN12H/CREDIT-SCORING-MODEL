@@ -3,25 +3,27 @@ Data Routes
 Customer and behavior CRUD endpoints backed by Turso.
 """
 import logging
-from typing import Literal
+from typing import Literal, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from src.api.schemas import BehaviorCreate, CustomerCreate
-from src.db.turso import (add_behavior_record, add_customer, get_customer, get_customer_history, get_raw_transaction_history, add_raw_transaction)
+from src.db.turso import (add_behavior_record, add_customer, get_customer, get_customer_history, get_raw_transaction_history, add_raw_transaction as _db_add_raw_transaction)
 from src.data.generate_customers import assign_credit_limit
 
 class RawTransactionCreate(BaseModel):
     """A single individual transaction — the atomic unit of customer activity."""
-    amount:           float   = Field(..., gt=0, description="Transaction amount in INR (must be > 0)")
+    amount:           float          = Field(..., gt=0, description="Transaction amount in INR (must be > 0)")
     transaction_type: Literal["Purchase", "Repayment", "Penalty"] = Field(
         ..., description="Type: 'Purchase' (spending), 'Repayment' (paying bill), 'Penalty' (late fee)"
     )
+    store_id:         Optional[str]  = Field(None, description="Store identifier (optional, e.g. 'DMART_001', 'AMAZON')")
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "amount": 350.0,
-                "transaction_type": "Purchase"
+                "transaction_type": "Purchase",
+                "store_id": "DMART_001"
             }
         }
     }
@@ -110,13 +112,51 @@ def add_raw_transaction(customer_id: int, txn: RawTransactionCreate):
         if not customer:
             raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found.")
 
+        # 1. Compute running balance from all-time transactions
+        history = get_raw_transaction_history(customer_id)
+        current_balance = sum(
+            t["amount"] if t["transaction_type"] == "Purchase" else -t["amount"]
+            for t in history
+            if t["transaction_type"] in ["Purchase", "Repayment"]
+        )
+
+        # 2. Block Purchase if it would exceed the credit limit
+        if txn.transaction_type == "Purchase":
+            limit = customer.get("credit_limit", 0)
+            if (current_balance + txn.amount) > limit:
+                remaining = max(0, limit - current_balance)
+                logger.warning(
+                    f"Transaction blocked for customer {customer_id}: "
+                    f"Spending ₹{txn.amount} would exceed limit of ₹{limit} "
+                    f"(current balance ₹{current_balance})"
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error":            "Limit Exceeded",
+                        "customer_id":      customer_id,
+                        "current_balance":  round(current_balance, 2),
+                        "credit_limit":     limit,
+                        "remaining_limit":  round(remaining, 2),
+                        "requested_amount": txn.amount,
+                        "message":          f"🚫 Transaction rejected. You have ₹{remaining:.2f} remaining, but tried to spend ₹{txn.amount:.2f}."
+                    }
+                )
+
+        # 3. Build payload — include store_id only if provided
         payload = {
-            "customer_id":       customer_id,
-            "amount":            txn.amount,
-            "transaction_type":  txn.transaction_type,
+            "customer_id":      customer_id,
+            "amount":           txn.amount,
+            "transaction_type": txn.transaction_type,
         }
-        result = add_raw_transaction(payload)
-        logger.info(f"Transaction logged: customer={customer_id}, type={txn.transaction_type}, amount=₹{txn.amount}")
+        if txn.store_id:
+            payload["store_id"] = txn.store_id
+
+        result = _db_add_raw_transaction(payload)
+        logger.info(
+            f"Transaction logged: customer={customer_id}, type={txn.transaction_type}, "
+            f"amount=₹{txn.amount}, store={txn.store_id or 'N/A'}"
+        )
         return {
             "status":  "created",
             "message": f"₹{txn.amount:.2f} {txn.transaction_type} logged for customer {customer_id}",
