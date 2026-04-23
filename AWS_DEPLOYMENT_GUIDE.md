@@ -89,7 +89,9 @@ Paste in your credentials, exactly like your local computer:
 ```env
 TURSO_URL=https://your-turso-database-url
 TURSO_AUTH_TOKEN=your-long-turso-token
-# Add your ADMIN_API_KEY and hugging face keys if you want them
+HF_REPO_ID=your-huggingface-username/your-repo-name
+HF_TOKEN=hf_your_actual_token_here
+CORS_ORIGINS=*
 ```
 *(To save and exit Nano: Press `Ctrl+O`, `Enter`, then `Ctrl+X`).*
 
@@ -121,3 +123,80 @@ Leave the server running by detaching from `tmux`:
 3. Press `D`
 
 You will return to the regular terminal, but your server will stay running forever! You can now type `exit` to close your connection.
+
+---
+
+## Step 7: How to Resume After Pausing/Stopping the Server
+If you stop your EC2 instance from the AWS Dashboard (to save hours or reboot), your API goes offline. When you are ready to turn it back on, follow these exact steps:
+
+1. Click **Start Instance** in the AWS EC2 Dashboard.
+2. Note your **new** Public IPv4 address (it changes every time you stop/start!).
+3. Open PowerShell/Terminal on your laptop and SSH in:
+   ```bash
+   ssh -i aws.pem ubuntu@<YOUR-NEW-PUBLIC-IP>
+   ```
+4. Navigate to your project folder and activate the environment:
+   ```bash
+   cd CREDIT-SCORING-MODEL
+   source .venv/bin/activate
+   ```
+5. Start `tmux` and launch the API to get back online!
+   ```bash
+   tmux
+   sudo .venv/bin/python -m uvicorn src.api.app:app --host 0.0.0.0 --port 80
+   ```
+*(Don't forget to press `Ctrl+B`, then `D` to safely detach before you close your laptop!)*
+
+---
+
+## Step 8: Upgrade to HTTPS (Production Ready)
+To get that "Security Lock" icon and enable `https://`, you need a **Domain Name** (like `api.yourdomain.com`).
+
+### 1. Point your Domain to AWS
+In your domain provider settings (GoDaddy, Namecheap, etc.), create an **A Record** pointing to your **AWS Public IP**.
+
+### 2. Install Nginx & Certbot
+Run these on your server:
+```bash
+sudo apt update
+sudo apt install nginx certbot python3-certbot-nginx -y
+```
+
+### 3. Configure Nginx
+Create a config file:
+```bash
+sudo nano /etc/nginx/sites-available/baaki-api
+```
+Paste this (replace `yourdomain.com` with your actual domain):
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+Link it and restart:
+```bash
+sudo ln -s /etc/nginx/sites-available/baaki-api /etc/nginx/sites-enabled/
+sudo systemctl restart nginx
+```
+
+### 4. Get SSL Certificate
+```bash
+sudo certbot --nginx -d yourdomain.com
+```
+*(Follow the prompts. Choose 'Redirect' if asked).*
+
+### 5. Start API on Port 8000
+Now that Nginx is handling port 80/443, start your API on a private port:
+```bash
+tmux
+.venv/bin/python -m uvicorn src.api.app:app --host 127.0.0.1 --port 8000 --proxy-headers
+```

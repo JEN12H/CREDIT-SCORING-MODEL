@@ -10,9 +10,9 @@ Credentials are loaded from .env:
   TURSO_AUTH_TOKEN — JWT auth token from Turso dashboard
 
 Tables managed:
-  - customers               : one row per customer profile
+  - user                    : one row per customer profile
   - credit_behavior_monthly : one row per customer per month
-  - raw_transactions        : individual transaction events
+  - transactions            : individual transaction events
   - retraining_log          : audit trail of every model retraining run
 """
 
@@ -135,7 +135,7 @@ def _to_turso_arg(val) -> dict:
 def ping() -> bool:
     """Return True if Turso is reachable."""
     try:
-        _single_execute("SELECT customer_id FROM customers LIMIT 1")
+        _single_execute("SELECT id FROM user LIMIT 1")
         return True
     except Exception as e:
         logger.error("Turso unreachable: %s", e)
@@ -159,7 +159,7 @@ def seed_from_csv(customers_path: str, behavior_path: str, batch_size: int = 100
         cols = list(records[0].keys()) if records else []
         placeholders = ", ".join(["?" for _ in cols])
         safe_cols = ", ".join([f'"{c}"' for c in cols])
-        sql = f'INSERT OR REPLACE INTO customers ({safe_cols}) VALUES ({placeholders})'
+        sql = f'INSERT OR REPLACE INTO user ({safe_cols}) VALUES ({placeholders})'
 
         for i in range(0, len(records), batch_size):
             batch = records[i: i + batch_size]
@@ -205,47 +205,48 @@ def seed_from_csv(customers_path: str, behavior_path: str, batch_size: int = 100
 
 def add_customer(data: dict) -> dict:
     """
-    Insert a new customer profile.
-    Auto-stamps registered_at = now() if not provided.
-    If customer_id is None / missing, Turso auto-generates it (AUTOINCREMENT).
-    Returns the new record including the auto-generated customer_id.
-    Raises ValueError if customer_id already exists.
+    Update credit profile fields for an existing user.
+    The user must already exist in the 'user' table (created by the auth system).
+    Raises ValueError if the user does not exist.
+    Returns the data dict with customer_id set.
     """
-    # Duplicate check if customer_id explicitly provided
-    if data.get("customer_id") is not None:
-        existing = _single_execute(
-            "SELECT customer_id FROM customers WHERE customer_id = ?",
-            [data["customer_id"]]
+    user_id = data.get("customer_id") or data.get("id")
+    if not user_id:
+        raise ValueError("customer_id (the user's string id from auth) is required.")
+
+    # Verify user exists in the auth table
+    existing = _single_execute("SELECT id FROM user WHERE id = ?", [user_id])
+    if not existing:
+        raise ValueError(
+            f"User '{user_id}' not found. "
+            "Users must be registered via the auth system before a credit profile can be set."
         )
-        if existing:
-            raise ValueError(f"Customer {data['customer_id']} already exists.")
-    else:
-        data.pop("customer_id", None)
 
     if not data.get("registered_at"):
         data["registered_at"] = datetime.now(timezone.utc).isoformat()
 
-    cols = list(data.keys())
-    placeholders = ", ".join(["?" for _ in cols])
-    safe_cols = ", ".join([f'"{c}"' for c in cols])
-    insert_sql = f'INSERT INTO customers ({safe_cols}) VALUES ({placeholders})'
-    args = [data[c] for c in cols]
+    # Only UPDATE credit profile columns — never touch auth fields
+    CREDIT_COLS = {
+        "age", "employment_status", "education_level", "monthly_income",
+        "credit_limit", "city_tier", "dependents", "residence_type",
+        "account_age_months", "registered_at"
+    }
+    update_data = {k: v for k, v in data.items() if k in CREDIT_COLS and v is not None}
 
-    # Execute insert + get last inserted ID in one pipeline
-    results = _execute([
-        {"sql": insert_sql, "args": [_to_turso_arg(a) for a in args]},
-        {"sql": "SELECT last_insert_rowid() AS customer_id", "args": []},
-    ])
+    if update_data:
+        set_clause = ", ".join([f'"{k}" = ?' for k in update_data.keys()])
+        args = list(update_data.values()) + [user_id]
+        _single_execute(
+            f'UPDATE user SET {set_clause} WHERE id = ?',
+            args
+        )
 
-    new_id_rows = _rows_to_dicts(results[1]) if len(results) > 1 else []
-    new_id = new_id_rows[0]["customer_id"] if new_id_rows else None
-    data["customer_id"] = new_id
-
-    logger.info("Added customer %s (registered_at=%s)", new_id, data["registered_at"])
+    data["customer_id"] = user_id
+    logger.info("Updated credit profile for user %s", user_id)
     return data
 
 
-def update_customer(customer_id: int, data: dict) -> dict:
+def update_customer(customer_id: str, data: dict) -> dict:
     """Update an existing customer profile. Returns updated record."""
     if not data:
         return get_customer(customer_id) or {}
@@ -253,7 +254,7 @@ def update_customer(customer_id: int, data: dict) -> dict:
     set_clause = ", ".join([f'"{k}" = ?' for k in data.keys()])
     args = list(data.values()) + [customer_id]
     _single_execute(
-        f'UPDATE customers SET {set_clause} WHERE customer_id = ?',
+        f'UPDATE user SET {set_clause} WHERE id = ?',
         args
     )
     return get_customer(customer_id) or {}
@@ -278,15 +279,17 @@ def _compute_account_age(record: dict) -> int:
     return record.get("account_age_months", 0)
 
 
-def get_customer(customer_id: int) -> Optional[dict]:
+def get_customer(customer_id: str) -> Optional[dict]:
     """Return customer record dict with dynamically computed account_age_months."""
     rows = _single_execute(
-        "SELECT * FROM customers WHERE customer_id = ?",
+        "SELECT * FROM user WHERE id = ?",
         [customer_id]
     )
     if not rows:
         return None
     record = rows[0]
+    # Alias 'id' as 'customer_id' so all downstream scoring code works unchanged
+    record["customer_id"] = record.get("id")
     record["account_age_months"] = _compute_account_age(record)
     return record
 
@@ -335,7 +338,7 @@ def get_customer_history(customer_id: int) -> list:
 def get_raw_transaction_history(customer_id: int, months: int = 6) -> list:
     """Return raw transactions for a customer, sorted newest first."""
     return _single_execute(
-        "SELECT * FROM raw_transactions WHERE customer_id=? ORDER BY created_at DESC",
+        "SELECT * FROM transactions WHERE customer_id=? ORDER BY created_at DESC",
         [customer_id]
     )
 
@@ -353,7 +356,7 @@ def add_raw_transaction(data: dict) -> dict:
     placeholders = ", ".join(["?" for _ in cols])
     safe_cols = ", ".join([f'"{c}"' for c in cols])
     _single_execute(
-        f'INSERT INTO raw_transactions ({safe_cols}) VALUES ({placeholders})',
+        f'INSERT INTO transactions ({safe_cols}) VALUES ({placeholders})',
         [data[c] for c in cols]
     )
     logger.info(
@@ -371,7 +374,7 @@ def migrate_add_store_id() -> dict:
     """
     try:
         _single_execute(
-            "ALTER TABLE raw_transactions ADD COLUMN store_id TEXT DEFAULT NULL"
+            "ALTER TABLE transactions ADD COLUMN store_id TEXT DEFAULT NULL"
         )
         logger.info("Migration successful: store_id column added to raw_transactions.")
         return {"status": "added"}
@@ -397,7 +400,7 @@ def export_to_csv(customers_path: str, behavior_path: str) -> dict:
     offset = 0
     while True:
         chunk = _single_execute(
-            "SELECT * FROM customers LIMIT ? OFFSET ?",
+            "SELECT * FROM user LIMIT ? OFFSET ?",
             [PAGE, offset]
         )
         all_customers.extend(chunk)

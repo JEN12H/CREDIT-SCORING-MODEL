@@ -1,5 +1,5 @@
 """
-Aggregator script to compile raw_transactions into the standard monthly behavior format.
+Aggregator script to compile transactions into the standard monthly behavior format.
 """
 import os
 import pandas as pd
@@ -8,14 +8,14 @@ from datetime import datetime
 from src.db.turso import _single_execute, _to_turso_arg, _execute
 
 def aggregate_raw_to_monthly(output_path="data/credit_behavior_monthly.csv"):
-    print("Fetching raw_transactions from Turso...")
+    print("Fetching transactions from Turso...")
 
     PAGE = 1000
     all_txns = []
     offset = 0
     while True:
         chunk = _single_execute(
-            "SELECT * FROM raw_transactions LIMIT ? OFFSET ?",
+            "SELECT * FROM transactions LIMIT ? OFFSET ?",
             [PAGE, offset]
         )
         all_txns.extend(chunk)
@@ -32,7 +32,7 @@ def aggregate_raw_to_monthly(output_path="data/credit_behavior_monthly.csv"):
     
     # Fetch customer credit limits for accurate utilization math
     print("Fetching customer profiles for accurate limit generation...")
-    all_custs = _single_execute("SELECT customer_id, credit_limit FROM customers")
+    all_custs = _single_execute("SELECT id AS customer_id, credit_limit FROM user")
     limits = {c["customer_id"]: (c["credit_limit"] or 100000) for c in all_custs}
 
     print("Aggregating into monthly trends...")

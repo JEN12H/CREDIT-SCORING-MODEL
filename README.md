@@ -239,6 +239,10 @@ cp .env.example .env
 TURSO_URL=https://your-database.turso.io
 TURSO_AUTH_TOKEN=your-turso-auth-token
 
+# Hugging Face Model Registry (optional, for syncing models)
+HF_REPO_ID=your-hf-username/your-repo-name
+HF_TOKEN=hf_your_hugging_face_token
+
 # Security
 ADMIN_API_KEY=your-secret-key-for-admin-endpoints
 CORS_ORIGINS=http://localhost:3000,http://localhost:5173
@@ -554,6 +558,10 @@ Open `.env` and paste your values:
 TURSO_URL=https://baaki-credit-scoring-yourname.turso.io
 TURSO_AUTH_TOKEN=eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...
 
+# Hugging Face (optional)
+HF_REPO_ID=JEN12H/BAAKI-Credit-Model
+HF_TOKEN=hf_...
+
 # Also set your admin API key (any strong random string)
 ADMIN_API_KEY=my-secret-admin-key-change-this
 
@@ -569,7 +577,7 @@ Run this once to create all required tables in Turso:
 turso db shell baaki-credit-scoring < docs/turso_schema.sql
 ```
 
-This creates four tables: `customers`, `credit_behavior_monthly`, `raw_transactions`, `retraining_log`.
+This creates four tables: `user`, `credit_behavior_monthly`, `transactions`, `retraining_log`.
 
 ### Step 5: Start the API
 

@@ -31,8 +31,9 @@ class RawTransactionCreate(BaseModel):
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Database"])
 
-@router.post("/customers/", status_code=201)
+@router.post("/customers/", status_code=200)
 def create_customer(customer: CustomerCreate):
+    """Update credit profile fields for an existing user (registered via auth system)."""
     try:
         data = customer.model_dump()
 
@@ -50,12 +51,12 @@ def create_customer(customer: CustomerCreate):
             )
 
         result = add_customer(data)
-        generated_id = result.get("customer_id")
+        uid = result.get("customer_id") or result.get("id")
         return {
-            "status": "created",
-            "customer_id": generated_id,                     # ← frontend MUST save this
-            "credit_limit_assigned": result.get("credit_limit", data["credit_limit"]),
-            "message": f"Customer created successfully. Save customer_id={generated_id} for future API calls.",
+            "status": "updated",
+            "customer_id": uid,
+            "credit_limit_assigned": result.get("credit_limit", data.get("credit_limit")),
+            "message": f"Credit profile updated for user {uid}.",
             "data": result,
         }
     except ValueError as e:
@@ -65,7 +66,7 @@ def create_customer(customer: CustomerCreate):
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 @router.post("/customers/{customer_id}/behavior", status_code=201)
-def add_monthly_behavior(customer_id: int, behavior: BehaviorCreate):
+def add_monthly_behavior(customer_id: str, behavior: BehaviorCreate):
     try:
         data = behavior.model_dump()
         data["customer_id"] = customer_id
@@ -78,7 +79,7 @@ def add_monthly_behavior(customer_id: int, behavior: BehaviorCreate):
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 @router.get("/customers/{customer_id}/history")
-def get_history(customer_id: int):
+def get_history(customer_id: str):
     try:
         profile = get_customer(customer_id)
         history = get_customer_history(customer_id)
@@ -93,7 +94,7 @@ def get_history(customer_id: int):
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 @router.post("/customers/{customer_id}/transactions", status_code=201)
-def add_raw_transaction(customer_id: int, txn: RawTransactionCreate):
+def add_raw_transaction(customer_id: str, txn: RawTransactionCreate):
     """
     Log a single individual transaction for a customer.
     Examples: ₹150 grocery purchase, ₹500 electricity bill, ₹1000 repayment.
@@ -170,7 +171,7 @@ def add_raw_transaction(customer_id: int, txn: RawTransactionCreate):
 
 
 @router.get("/customers/{customer_id}/transactions")
-def get_raw_transactions(customer_id: int):
+def get_raw_transactions(customer_id: str):
     """Fetch the raw, itemized ledger of a customer's transactions."""
     try:
         raw_txns = get_raw_transaction_history(customer_id)

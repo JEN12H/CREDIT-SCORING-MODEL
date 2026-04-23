@@ -107,7 +107,7 @@ class TestScoringValidation:
 
     def test_predict_auto_returns_503_no_handler(self, client):
         """With no trained models, valid input should return 503."""
-        payload = {"customer_id": 1}
+        payload = {"customer_id": "test_id_123"}
         response = client.post("/api/v1/predict/auto", json=payload)
         assert response.status_code == 503
 
@@ -118,7 +118,7 @@ class TestCustomerEndpoints:
     def test_create_customer_credit_limit_validation(self, client):
         """Credit limit should not exceed ₹1,00,000."""
         payload = {
-            "customer_id": 1,
+            "customer_id": "test_id_123",
             "age": 30,
             "employment_status": "Salaried",
             "education_level": "Graduate",

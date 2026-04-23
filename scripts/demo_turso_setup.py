@@ -48,7 +48,7 @@ def main():
 
     # ── Step 2: Row Counts ────────────────────────────────────────
     section("STEP 2: Table Row Counts (All 4 Tables)")
-    tables = ["customers", "credit_behavior_monthly", "raw_transactions", "retraining_log"]
+    tables = ["user", "credit_behavior_monthly", "transactions", "retraining_log"]
     total = 0
     for table in tables:
         try:
@@ -64,7 +64,7 @@ def main():
 
     # ── Step 3: Fetch a Real Customer ─────────────────────────────
     section("STEP 3: Fetch Customer Record from Turso")
-    sample = _single_execute("SELECT customer_id FROM customers LIMIT 1")
+    sample = _single_execute("SELECT customer_id FROM user LIMIT 1")
     if not sample:
         print("  No customers found in database!")
         sys.exit(1)
@@ -110,7 +110,7 @@ def main():
     # ── Step 5: Raw Transactions ──────────────────────────────────
     section(f"STEP 5: Raw Transactions Sample")
     txn_rows = _single_execute(
-        "SELECT * FROM raw_transactions LIMIT 3"
+        "SELECT * FROM transactions LIMIT 3"
     )
     if txn_rows:
         print(f"  Sample of raw_transactions:")
@@ -151,7 +151,7 @@ def main():
 
     # ── Step 7: Clean up ─────────────────────────────────────────
     section("STEP 7: Cleanup Test Customer")
-    _single_execute("DELETE FROM customers WHERE customer_id = ?", [new_id])
+    _single_execute("DELETE FROM user WHERE customer_id = ?", [new_id])
     verify_deleted = get_customer(new_id)
     print(f"  Test customer {new_id} deleted: {verify_deleted is None}")
 

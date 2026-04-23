@@ -37,3 +37,8 @@ env/
 
 # Legacy code (kept locally for reference)
 src/_legacy/
+
+# Credentials and deployment files
+AWS_DEPLOYMENT_GUIDE.md
+aws_cred.txt
+aws.pem

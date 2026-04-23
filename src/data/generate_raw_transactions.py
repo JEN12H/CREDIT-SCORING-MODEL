@@ -1,6 +1,6 @@
 """
 Generate dummy raw transactions for all customers in the Turso database
-and upload them directly into the raw_transactions table.
+and upload them directly into the transactions table.
 """
 import os
 import random
@@ -15,7 +15,7 @@ def generate_transactions(num_months=12):
     # 1. Fetch all customers from the database
     print("Fetching customers from Turso...")
     customers = _single_execute(
-        "SELECT customer_id, monthly_income, credit_limit FROM customers"
+        "SELECT customer_id, monthly_income, credit_limit FROM user"
     )
     
     if not customers:
@@ -110,7 +110,7 @@ def generate_transactions(num_months=12):
         cols = list(batch[0].keys())
         placeholders = ", ".join(["?" for _ in cols])
         safe_cols = ", ".join([f'"{c}"' for c in cols])
-        sql = f'INSERT INTO raw_transactions ({safe_cols}) VALUES ({placeholders})'
+        sql = f'INSERT INTO transactions ({safe_cols}) VALUES ({placeholders})'
         statements = [
             {"sql": sql, "args": [_to_turso_arg(r[c]) for c in cols]}
             for r in batch

@@ -17,9 +17,9 @@ def run_demo():
         
         # 0. Clean up any previous test runs for this ID
         print(f"🧹 Cleaning up any old data for Customer ID: {customer_id}...")
-        _single_execute("DELETE FROM raw_transactions WHERE customer_id = ?", [customer_id])
+        _single_execute("DELETE FROM transactions WHERE customer_id = ?", [customer_id])
         _single_execute("DELETE FROM credit_behavior_monthly WHERE customer_id = ?", [customer_id])
-        _single_execute("DELETE FROM customers WHERE customer_id = ?", [customer_id])
+        _single_execute("DELETE FROM user WHERE customer_id = ?", [customer_id])
         
         # 1. Create Customer via API
         print(f"\n👤 PHASE 1: Frontend User Onboarding")
